@@ -194,3 +194,25 @@ func TestSettingsPageGuards(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 }
+
+// Two callers at once (the screen and the background worker on
+// Android): the second gets "busy" and runs nothing.
+func TestSyncOnceNeverOverlaps(t *testing.T) {
+	s, _ := newService(t)
+	if err := s.Unlock(pass, true); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.syncing = true
+	s.mu.Unlock()
+	busy, err := s.SyncOnce()
+	if err != nil || !busy {
+		t.Fatalf("busy=%v err=%v", busy, err)
+	}
+	s.mu.Lock()
+	s.syncing = false
+	s.mu.Unlock()
+	if busy, err := s.SyncOnce(); err != nil || busy {
+		t.Fatalf("busy=%v err=%v", busy, err)
+	}
+}

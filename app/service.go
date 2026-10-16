@@ -581,6 +581,12 @@ func (s *Service) SyncOnce() (busy bool, err error) {
 		s.mu.Unlock()
 		return false, nil
 	}
+	if s.syncing {
+		// A pass is already running (the loop, the CLI, or on Android the
+		// screen and the background worker): never two over one state.
+		s.mu.Unlock()
+		return true, nil
+	}
 	e, err := s.engineLocked()
 	if err != nil {
 		if errors.Is(err, vault.ErrLocked) && s.needsKey == "" && s.store() != nil {
