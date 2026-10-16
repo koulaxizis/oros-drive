@@ -74,6 +74,8 @@ type Remote struct {
 	Rev    string // Dropbox rev of manifest.json when Exists
 	Files  map[string]Entry
 	Legacy bool // the manifest itself is the pre-VD-KEY format
+
+	hashes map[string]bool // v2 content the manifest references (Upload dedup)
 }
 
 // Paths returns the manifest paths, sorted.
@@ -286,8 +288,9 @@ type File struct {
 // PutFiles adds or replaces files (and removes the paths in del) in one
 // manifest write, conditional on the revision just read; a refused
 // write starts over, at most twice (MAX_SYNC_TRIES), like vault.js.
-// It is the building block of the mirror engine; wave 1 uses it only
-// in tests and the interop harness.
+// The mirror engine does not use it (it must not overwrite a newer
+// cloud entry blindly); it uses Upload + Commit and re-decides on a
+// conflict. PutFiles serves tests and the interop harness.
 func (v *Vault) PutFiles(files map[string]File, del []string) error {
 	for path := range files {
 		if err := CheckPath(path); err != nil {
@@ -311,15 +314,8 @@ func (v *Vault) putOnce(files map[string]File, del []string) error {
 	if !remote.Exists {
 		v.keys = nil // VD-KEY: a cached key may have no key file any more
 	}
-	k, err := v.LoadKeys(true)
-	if err != nil {
+	if _, err := v.LoadKeys(true); err != nil {
 		return err
-	}
-	cloudHashes := map[string]bool{}
-	for _, e := range remote.Files {
-		if e.V != 1 {
-			cloudHashes[e.H] = true
-		}
 	}
 	paths := make([]string, 0, len(files))
 	for p := range files {
@@ -327,36 +323,83 @@ func (v *Vault) putOnce(files map[string]File, del []string) error {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		f := files[p]
-		e := NewEntry(f.Data, f.Mime, v.now())
-		if !v.objectStored(k, e.H, cloudHashes) {
-			if _, err := v.Store.Put(k.ObjectKey(e.H), k.Seal(f.Data), Overwrite); err != nil {
-				return err
-			}
+		e, err := v.Upload(remote, files[p].Data, files[p].Mime)
+		if err != nil {
+			return err
 		}
-		cloudHashes[e.H] = true
 		remote.Files[p] = e
 	}
 	for _, p := range del {
 		delete(remote.Files, p)
 	}
-	return v.writeManifest(k, remote)
+	return v.Commit(remote)
 }
 
-func (v *Vault) writeManifest(k *Keys, remote *Remote) error {
+// Upload stores plain as a vault object and returns its manifest
+// entry. Content the manifest already references, whose object one
+// probe finds, is not sent again (vault.js objectStored). The entry
+// still has to be committed with the manifest.
+func (v *Vault) Upload(remote *Remote, plain []byte, mime string) (Entry, error) {
+	k, err := v.LoadKeys(false)
+	if err != nil {
+		return Entry{}, err
+	}
+	if k == nil {
+		return Entry{}, ErrNoKey
+	}
+	if remote.hashes == nil {
+		remote.hashes = map[string]bool{}
+		for _, e := range remote.Files {
+			if e.V != 1 {
+				remote.hashes[e.H] = true
+			}
+		}
+	}
+	e := NewEntry(plain, mime, v.now())
+	if !v.objectStored(k, e.H, remote.hashes) {
+		if _, err := v.Store.Put(k.ObjectKey(e.H), k.Seal(plain), Overwrite); err != nil {
+			return Entry{}, err
+		}
+	}
+	remote.hashes[e.H] = true
+	return e, nil
+}
+
+// Commit writes remote.Files as the cloud manifest, only if the cloud
+// manifest is still the revision remote was read at (create-only when
+// there was none). A refused write returns ErrConflict: the caller
+// reads the manifest again and re-decides, it never overwrites. On
+// success remote carries the new revision, so the next batch can be
+// committed on top of it.
+func (v *Vault) Commit(remote *Remote) error {
+	k, err := v.LoadKeys(false)
+	if err != nil {
+		return err
+	}
+	if k == nil {
+		return ErrNoKey
+	}
+	rev, err := v.writeManifest(k, remote)
+	if err != nil {
+		return err
+	}
+	remote.Exists, remote.Rev, remote.Legacy = true, rev, false
+	return nil
+}
+
+func (v *Vault) writeManifest(k *Keys, remote *Remote) (string, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false) // JSON.stringify does not escape <, >, &
 	if err := enc.Encode(manifestDoc{Ver: 2, Files: remote.Files}); err != nil {
-		return err
+		return "", err
 	}
 	plain := bytes.TrimRight(buf.Bytes(), "\n")
 	mode := CreateOnly
 	if remote.Exists {
 		mode = UpdateRev(remote.Rev)
 	}
-	_, err := v.Store.Put(ManifestKey, k.Seal(plain), mode)
-	return err
+	return v.Store.Put(ManifestKey, k.Seal(plain), mode)
 }
 
 // CheckPath accepts only the form fs.js accepts: "/internal/a/b".

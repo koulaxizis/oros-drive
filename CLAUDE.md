@@ -6,3 +6,6 @@
 - `vault/testdata/` vaults were written by the real vault.js via `interop/vaultjs.cjs`; regenerate them with it, never by hand.
 - Free forever, MIT, no Google dependencies, each user signs in with their own Dropbox (app key `wnohlxz79ie8w3e`, the orOS sync app).
 - Platforms: Windows, Linux, Android first; Mac best effort.
+- `mirror/` follows the same rules on both sides: a deletion needs a Base (so a fresh or lost state never deletes), a local file is re-checked right before it is overwritten or removed, the manifest is committed only on the revision read (a refused write re-runs the whole pass), and removed local files go to the trash. Every rule has a test in `mirror/engine_test.go` and the browser round trips in `interop/mirror_test.go`; keep both green.
+- The settings page (`app/web`) puts app data into the page only through `textContent`; every API call needs the cookie, POSTs also the `X-OD` header, and the host must be 127.0.0.1/localhost. EN + EL for every string.
+- Do not tag a release that uploads to `/internal/Drive` unless the orOS on-demand change (VD-OD, oros PR #438) is live on useoros.online.

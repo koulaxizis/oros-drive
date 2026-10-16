@@ -1,7 +1,7 @@
-// orosdrive is the orOS Drive command line. Wave 1 is read-only: it
-// signs in to Dropbox, opens the orOS Vault with the sync passphrase,
-// lists it and copies files out of it. Nothing is ever written to the
-// vault from here yet.
+// orosdrive is orOS Drive: with no command (or "run") it is the
+// desktop app that mirrors folders into the orOS Vault (tray icon and
+// a settings page in the browser); the commands below drive it from a
+// terminal, which also makes it usable on a Linux server.
 package main
 
 import (
@@ -11,17 +11,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"golang.org/x/term"
 
+	"github.com/koulaxizis/oros-drive/app"
 	"github.com/koulaxizis/oros-drive/dropbox"
-	"github.com/koulaxizis/oros-drive/internal/config"
+	"github.com/koulaxizis/oros-drive/internal/secret"
 	"github.com/koulaxizis/oros-drive/vault"
 )
 
@@ -30,8 +29,18 @@ var version = "dev"
 const usage = `orOS Drive %s: your orOS Vault from this computer.
 
 Usage:
+  orosdrive [run] [--no-tray] [--background]
+                                 the app: mirrors your folders, tray icon, settings page
+  orosdrive open                 open the settings page of the running app
   orosdrive login [--paste]      sign in to your Dropbox (the one orOS syncs with)
-  orosdrive logout               forget the sign-in
+  orosdrive logout               forget the sign-in and the vault key
+  orosdrive unlock               open the vault key with the orOS sync passphrase
+                                 (kept in the system keychain; the passphrase is not)
+  orosdrive add [--name N] <folder>
+                                 mirror a folder into orOS (Files › orOS Drive)
+  orosdrive folders              list mirrored folders
+  orosdrive remove <name>        stop mirroring a folder (files stay on both sides)
+  orosdrive sync                 one sync now (without the app running)
   orosdrive status               account and vault summary
   orosdrive ls [-l] [path]       list files in the orOS disk (path like Docs/Work)
   orosdrive pull [--force] <path> <folder>
@@ -43,13 +52,29 @@ OROS_PASSPHRASE). It never leaves this computer and is not stored.
 `
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, usage, version)
-		os.Exit(2)
-	}
 	var err error
-	cmd, args := os.Args[1], os.Args[2:]
+	cmd, args := "run", []string{}
+	if len(os.Args) >= 2 {
+		cmd, args = os.Args[1], os.Args[2:]
+	}
+	if strings.HasPrefix(cmd, "--") && cmd != "--help" && cmd != "--version" {
+		cmd, args = "run", os.Args[1:]
+	}
 	switch cmd {
+	case "run":
+		err = cmdRun(args)
+	case "open":
+		err = cmdOpen()
+	case "unlock":
+		err = cmdUnlock()
+	case "add":
+		err = cmdAdd(args)
+	case "folders":
+		err = cmdFolders()
+	case "remove":
+		err = cmdRemove(args)
+	case "sync":
+		err = cmdSync()
 	case "login":
 		err = cmdLogin(args)
 	case "logout":
@@ -87,32 +112,40 @@ func friendly(err error) string {
 }
 
 func client() (*dropbox.Client, error) {
-	t, err := config.LoadTokens()
+	t, err := secret.LoadTokens()
 	if err != nil {
 		return nil, err
 	}
 	c := dropbox.New(t)
-	c.OnTokens = func(t dropbox.Tokens) { _ = config.SaveTokens(t) }
+	c.OnTokens = func(t dropbox.Tokens) { _ = secret.SaveTokens(t) }
 	return c, nil
 }
 
 func passphrase() (*vault.Passphrase, error) {
+	p, err := readPassphrase()
+	if err != nil {
+		return nil, err
+	}
+	return vault.NewPassphrase(p), nil
+}
+
+func readPassphrase() (string, error) {
 	if p := os.Getenv("OROS_PASSPHRASE"); p != "" {
-		return vault.NewPassphrase(p), nil
+		return p, nil
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return nil, errors.New("no passphrase: set OROS_PASSPHRASE or run in a terminal")
+		return "", errors.New("no passphrase: set OROS_PASSPHRASE or run in a terminal")
 	}
 	fmt.Fprint(os.Stderr, "orOS sync passphrase: ")
 	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Fprintln(os.Stderr)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if len(b) == 0 {
-		return nil, errors.New("empty passphrase")
+		return "", errors.New("empty passphrase")
 	}
-	return vault.NewPassphrase(string(b)), nil
+	return string(b), nil
 }
 
 // storeForVault is the user's Dropbox, or a local folder when
@@ -147,18 +180,7 @@ func openVault() (*vault.Vault, *vault.Remote, error) {
 	return v, r, nil
 }
 
-func openURL(u string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
-	case "darwin":
-		cmd = exec.Command("open", u)
-	default:
-		cmd = exec.Command("xdg-open", u)
-	}
-	return cmd.Start()
-}
+func openURL(u string) error { return app.Open(u) }
 
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
@@ -203,7 +225,7 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := config.SaveTokens(t); err != nil {
+	if err := secret.SaveTokens(t); err != nil {
 		return err
 	}
 	if a, err := c.CurrentAccount(); err == nil {
@@ -218,7 +240,8 @@ func cmdLogout() error {
 	if c, err := client(); err == nil {
 		_ = c.Revoke()
 	}
-	if err := config.DeleteTokens(); err != nil {
+	_ = secret.DeleteVaultKey()
+	if err := secret.DeleteTokens(); err != nil {
 		return err
 	}
 	fmt.Println("Signed out.")

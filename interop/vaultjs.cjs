@@ -2,7 +2,7 @@
 // checkout) in Node against a vault kept in a folder, so the Go code
 // and the browser code can hand a vault back and forth.
 //
-//   node interop/vaultjs.cjs sync   <oros> <store> <disk> <state> <pass> [--touch]
+//   node interop/vaultjs.cjs sync   <oros> <store> <disk> <state> <pass> [--touch] [--fetch-drive]
 //   node interop/vaultjs.cjs legacy <oros> <store> <disk> <pass>
 //
 // <store>  vault keys as files (key.json, manifest.json, objects/…),
@@ -13,7 +13,9 @@
 // sync     loads <disk> into an in-memory orosFS, runs one
 //          orosVault.sync(), writes <disk>, <store> and <state> back and
 //          prints the stats as JSON. --touch first queues every file
-//          (what fs.js does when the user edits files).
+//          (what fs.js does when the user edits files). --fetch-drive
+//          then opens every on-demand Drive file (VD-OD) so it lands on
+//          <disk>; with an orOS from before VD-OD it changes nothing.
 // legacy   writes <disk> as a vault from before VD-KEY (passphrase-
 //          sealed manifest, objects/<sha256>), as an old orOS did.
 
@@ -188,10 +190,13 @@ function dumpStore() {
 
 async function main() {
   if (cmd === "sync") {
-    const [stateFile, pass, flag] = rest;
+    const [stateFile, pass, ...flags] = rest;
     const ctx = await device(pass, stateFile);
-    if (flag === "--touch") await ctx.orosVault.touchTree("/internal");
+    if (flags.includes("--touch")) await ctx.orosVault.touchTree("/internal");
     const res = await ctx.orosVault.sync("interop");
+    if (flags.includes("--fetch-drive") && typeof ctx.orosVault.remoteOnly === "function") {
+      for (const e of ctx.orosVault.remoteOnly()) await ctx.orosVault.fetch(e.path);
+    }
     await dumpDisk();
     dumpStore();
     const keep = {};

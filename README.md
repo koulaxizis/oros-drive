@@ -2,23 +2,49 @@
 
 Mirror chosen folders of your computer or phone into the encrypted [orOS](https://useoros.online) Vault, and later see the orOS disk as a drive. The Vault lives in your own Dropbox, end-to-end encrypted: Dropbox sees neither file names nor contents. Windows, Linux and Android. MIT, free forever.
 
-**Status: wave 1 of 7.** The core speaks the Vault format and is proven against the real orOS code; the command line can sign in, list and copy files out of the Vault. It never writes to your Vault yet. Mirroring comes in wave 3.
+**Status: wave 3 of 7.** The desktop app mirrors folders both ways between Windows or Linux and the Vault. orOS shows them in Files › orOS Drive and downloads a file only when you open it (once orOS's on-demand Drive update, oros PR #438, is live).
 
-## Command line (wave 1)
+## The app
+
+Start `orOS Drive.exe` (Windows) or `orosdrive` (Linux; the .deb adds it to the menu). The settings open in your browser:
+
+1. **Sign in to Dropbox**, the account orOS syncs with. Sign-in comes back to `http://localhost:47800/` (the address orOS Portable also uses, so close Portable for that moment).
+2. **Unlock the vault** with your orOS sync passphrase. It unwraps the vault key, which goes into the system keychain (Windows Credential Manager, the Secret Service on Linux). The passphrase itself is never stored. Without a keychain (a Linux server) the key is kept in a file only you can read, and the page says so.
+3. **Add folders.** Each one appears in orOS under `Drive/<this computer>/<folder>`.
+
+The app then lives in the tray (on GNOME the tray needs the AppIndicator extension; without it the settings page is the way in), starts at login if you tick it, and syncs when a mirrored folder changes, when the Vault changes (checked every 30 seconds) and every 10 minutes.
+
+### What happens to your files
+
+- Changes go both ways: new files, edits, renames (as delete + add) and deletions.
+- **The same file changed on both sides:** the computer's version keeps the name, orOS's version is kept beside it as `name (conflict YYYYMMDD-HHMMSS).ext`, on both sides. Deleted on one side but edited on the other: the edit wins.
+- **The first sync of a folder only adds.** Nothing is deleted on either side until both sides have seen a file.
+- **Many deletions at once** (more than 50, adjustable) wait for your yes in the settings page.
+- **A missing folder** (an unplugged disk) pauses that folder; it is never read as "everything was deleted". An empty Vault after a reset stops the mirror instead of rebuilding it.
+- **Files deleted here because they were deleted in orOS** go to the orOS Drive trash (Settings › Open the trash) for 30 days.
+- Files bigger than 500 MB (adjustable) stay on this computer and are listed. Lock and temp files (`~$*.docx`, `*.part`, `*.tmp`, `Thumbs.db`, `.DS_Store`) are never mirrored. Names Windows cannot hold (`a:b.txt`) stay in orOS and are listed.
+- A file that changed in the last 3 seconds waits for the next pass, and a local change made while syncing always wins.
+
+## Command line
 
 ```
-orosdrive login [--paste]     sign in to the Dropbox orOS syncs with
-orosdrive status              account and vault summary
-orosdrive ls [-l] [path]      list the orOS disk, e.g. `orosdrive ls -l Docs`
-orosdrive pull <path> <dir>   copy a file or folder out of the Vault
+orosdrive [run] [--no-tray] [--background]   the app (no tray: servers)
+orosdrive open                    open the settings page of the running app
+orosdrive login [--paste]         sign in to the Dropbox orOS syncs with
+orosdrive unlock                  unlock with the orOS sync passphrase
+orosdrive add [--name N] <folder> mirror a folder
+orosdrive folders | remove <name> | sync
+orosdrive status                  account and vault summary
+orosdrive ls [-l] [path]          list the orOS disk, e.g. `orosdrive ls -l Docs`
+orosdrive pull <path> <dir>       copy a file or folder out of the Vault
 orosdrive logout
 ```
 
-- `login` opens Dropbox in your browser and waits on `http://localhost:47800/` (the address orOS Portable also uses, so close Portable first). `--paste` shows a link instead and you paste the code back, for machines without a browser.
-- The orOS sync passphrase is asked for when needed (or taken from `OROS_PASSPHRASE`). It never leaves the computer and is not stored.
-- The Dropbox sign-in is kept in your config folder (`%AppData%\orOS Drive` / `~/.config/orOS Drive`), readable by you only. It gives access to the orOS app folder only.
+When the app is running, `add`, `remove`, `unlock` and `sync` go through it. `--paste` signs in on machines without a browser.
 
-Builds for Windows and Linux (amd64, arm64) are attached to every CI run as the `orosdrive` artifact.
+## Downloads
+
+Releases (tag `v*`) carry Windows zips (`orOS Drive.exe` without a console window + `orosdrive.exe` for the terminal), Linux tarballs and `.deb` packages for amd64 and arm64. Every CI run attaches the same files as the `orosdrive` artifact. The Windows exe is not signed yet, so SmartScreen may warn the first time ("More info › Run anyway").
 
 ## How it works
 
@@ -34,7 +60,12 @@ orOS Drive implements the same format and the same rules (conditional writes on 
 |---|---|
 | `vault/` | crypto, key file, manifest, download/upload, `DirStore` (a vault in a folder) |
 | `dropbox/` | Dropbox API v2: PKCE sign-in, refresh, conditional uploads, upload sessions, retries |
-| `cmd/orosdrive/` | the command line |
+| `mirror/` | the two-way mirror: scan, three-way merge per file, conflict copies, trash, safety limits |
+| `app/` | the desktop app: background loop, folder watcher, settings page (`app/web`), tray, autostart |
+| `internal/secret/` | keychain storage for the Dropbox sign-in and the vault key |
+| `internal/config/` | settings (`app.json`) and per-folder state |
+| `cmd/orosdrive/` | the program: the app and the command line |
+| `packaging/` | release files (`package.sh`) and the smoke test CI runs on Windows and Linux |
 | `interop/` | runs the real `sync.js` + `vault.js` in Node to hand vaults back and forth |
 
 ## Tests
@@ -48,9 +79,9 @@ CI runs both on every push, the interop job with `sync.js` and `vault.js` from o
 
 ## Plan
 
-1. Core + compatibility proof (this)
-2. orOS: Drive folders load on demand in the browser, so phones don't fill up
-3. Desktop mirror for Windows and Linux (tray app, two-way, conflict copies)
+1. Core + compatibility proof (done)
+2. orOS: Drive folders load on demand in the browser, so phones don't fill up (done)
+3. Desktop mirror for Windows and Linux (this)
 4. Android mirror inside the orOS Android app
 5. Virtual drive on Linux (FUSE) and Android (Files app)
 6. Virtual drive on Windows (Explorer, Cloud Files API)

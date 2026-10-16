@@ -1,6 +1,6 @@
-// Package config keeps orOS Drive's small local state: the Dropbox
-// refresh token. It is stored in the user's config folder, readable by
-// the user only. (Wave 3 moves secrets into the OS keychain.)
+// Package config keeps orOS Drive's settings: this computer's name in
+// the vault, the mirrored folders and the safety limits. Secrets are
+// not here (see package secret).
 package config
 
 import (
@@ -8,8 +8,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/koulaxizis/oros-drive/dropbox"
+	"github.com/koulaxizis/oros-drive/mirror"
 )
 
 // Dir is the config folder; OROS_DRIVE_CONFIG overrides it (tests).
@@ -24,44 +25,58 @@ func Dir() (string, error) {
 	return filepath.Join(base, "orOS Drive"), nil
 }
 
-func tokenFile() (string, error) {
+// Settings is app.json.
+type Settings struct {
+	Device      string        `json:"device"` // folder name of this computer under /Drive
+	Folders     []mirror.Pair `json:"folders"`
+	Paused      bool          `json:"paused,omitempty"`
+	MaxFileMB   int           `json:"maxFileMB,omitempty"`  // 0 = 500
+	MaxDeletes  int           `json:"maxDeletes,omitempty"` // 0 = 50
+	Lang        string        `json:"lang,omitempty"`       // "en", "el" or "" (from the system)
+	NoAutostart bool          `json:"noAutostart,omitempty"`
+}
+
+func settingsFile() (string, error) {
 	d, err := Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(d, "dropbox.json"), nil
+	return filepath.Join(d, "app.json"), nil
 }
 
-// LoadTokens returns the saved tokens, or dropbox.ErrNotConnected.
-func LoadTokens() (dropbox.Tokens, error) {
-	var t dropbox.Tokens
-	p, err := tokenFile()
+// Load reads the settings; missing means defaults, with the device
+// named after the computer.
+func Load() (*Settings, error) {
+	s := &Settings{}
+	p, err := settingsFile()
 	if err != nil {
-		return t, err
+		return nil, err
 	}
 	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		return t, dropbox.ErrNotConnected
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
 	}
-	if err != nil {
-		return t, err
+	if err == nil {
+		if err := json.Unmarshal(b, s); err != nil {
+			return nil, err
+		}
 	}
-	if err := json.Unmarshal(b, &t); err != nil || t.Refresh == "" {
-		return dropbox.Tokens{}, dropbox.ErrNotConnected
+	if s.Device == "" {
+		s.Device = DefaultDevice()
 	}
-	return t, nil
+	return s, nil
 }
 
-// SaveTokens writes the tokens (0600, atomic rename).
-func SaveTokens(t dropbox.Tokens) error {
-	p, err := tokenFile()
+// Save writes app.json atomically.
+func (s *Settings) Save() error {
+	p, err := settingsFile()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(t, "", "  ")
+	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -72,14 +87,41 @@ func SaveTokens(t dropbox.Tokens) error {
 	return os.Rename(tmp, p)
 }
 
-// DeleteTokens forgets the sign-in.
-func DeleteTokens() error {
-	p, err := tokenFile()
+// StateDir and TrashDir sit beside app.json.
+func StateDir() (string, error) { return sub("state") }
+func TrashDir() (string, error) { return sub("Trash") }
+
+func sub(name string) (string, error) {
+	d, err := Dir()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	return filepath.Join(d, name), nil
+}
+
+// DefaultDevice is the computer's name, made safe as a folder name.
+func DefaultDevice() string {
+	h, _ := os.Hostname()
+	h = CleanName(strings.SplitN(h, ".", 2)[0])
+	if h == "" {
+		return "Computer"
 	}
-	return nil
+	return h
+}
+
+// CleanName makes a name usable as one orOS folder name on every
+// system: no slashes, no characters Windows refuses, no dots at the
+// ends.
+func CleanName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`/\<>:"|?*`, r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.Trim(strings.TrimSpace(s), ".")
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return strings.TrimSpace(s)
 }

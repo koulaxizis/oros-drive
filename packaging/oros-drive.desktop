@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=orOS Drive
+Comment=Mirror folders into your encrypted orOS Vault
+Comment[el]=Mirror φακέλων στο κρυπτογραφημένο Vault του orOS
+Exec=orosdrive run
+Icon=oros-drive
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=orOS;sync;backup;Dropbox;vault;
+StartupNotify=false

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>orOS Drive</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <img src="icon.png" alt="" class="logo">
+  <div class="title">
+    <h1>orOS Drive</h1>
+    <span id="pill" class="pill"></span>
+  </div>
+  <div class="actions">
+    <button id="btn-sync" class="btn" data-t="syncNow"></button>
+    <button id="btn-pause" class="btn"></button>
+  </div>
+</header>
+
+<main>
+  <section id="sec-login" class="card" hidden>
+    <h2 data-t="loginTitle"></h2>
+    <p data-t="loginText"></p>
+    <button id="btn-login" class="btn primary" data-t="loginBtn"></button>
+    <p id="login-msg" class="note"></p>
+  </section>
+
+  <section id="sec-unlock" class="card" hidden>
+    <h2 data-t="unlockTitle"></h2>
+    <p id="unlock-text"></p>
+    <form id="form-unlock" class="row">
+      <input id="pass" type="password" autocomplete="current-password" required>
+      <button class="btn primary" data-t="unlockBtn"></button>
+    </form>
+    <div id="create-box" hidden>
+      <p data-t="noVault"></p>
+      <button id="btn-create" class="btn" data-t="createBtn"></button>
+    </div>
+    <p id="unlock-msg" class="note"></p>
+  </section>
+
+  <section id="sec-folders" class="card" hidden>
+    <h2 data-t="folders"></h2>
+    <p class="note" id="folders-intro"></p>
+    <ul id="folder-list" class="folders"></ul>
+    <form id="form-add" class="add">
+      <label><span data-t="folderPath"></span>
+        <span class="row"><input id="add-path" required><button type="button" id="btn-browse" class="btn" data-t="browse"></button></span></label>
+      <label><span data-t="folderName"></span><input id="add-name"></label>
+      <button class="btn primary" data-t="addBtn"></button>
+      <p id="add-msg" class="note"></p>
+    </form>
+  </section>
+
+  <section id="sec-activity" class="card" hidden>
+    <h2 data-t="activity"></h2>
+    <ul id="events" class="events"></ul>
+  </section>
+
+  <section id="sec-settings" class="card">
+    <h2 data-t="settings"></h2>
+    <form id="form-prefs" class="prefs">
+      <label><span data-t="device"></span><input id="p-device" maxlength="64"></label>
+      <label><span data-t="maxFile"></span><input id="p-maxfile" type="number" min="1" max="4096"></label>
+      <label><span data-t="maxDeletes"></span><input id="p-maxdel" type="number" min="1"></label>
+      <label><span data-t="lang"></span>
+        <select id="p-lang"><option value="" data-t="auto"></option><option value="en">English</option><option value="el">Ελληνικά</option></select></label>
+      <label class="check"><input id="p-autostart" type="checkbox"><span data-t="autostart"></span></label>
+      <button class="btn primary" data-t="save"></button>
+      <p id="prefs-msg" class="note"></p>
+    </form>
+    <div class="row wrap">
+      <button id="btn-oros" class="btn" data-t="openOros"></button>
+      <button id="btn-trash" class="btn" data-t="openTrash"></button>
+      <button id="btn-lock" class="btn" data-t="lock"></button>
+      <button id="btn-logout" class="btn" data-t="logout"></button>
+      <button id="btn-quit" class="btn" data-t="quit"></button>
+    </div>
+    <p class="note" id="about"></p>
+  </section>
+</main>
+
+<dialog id="picker">
+  <form method="dialog" class="picker">
+    <h2 data-t="pickTitle"></h2>
+    <div id="pick-roots" class="row wrap"></div>
+    <p id="pick-path" class="path"></p>
+    <ul id="pick-list" class="pick-list"></ul>
+    <div class="row">
+      <button value="cancel" class="btn" data-t="cancel"></button>
+      <button id="pick-ok" value="ok" class="btn primary" data-t="pickThis"></button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

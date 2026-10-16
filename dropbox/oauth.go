@@ -86,6 +86,13 @@ func (c *Client) Exchange(code string, p PKCE, redirect string) (Tokens, error) 
 // Port busy usually means orOS Portable is running: close it, or sign
 // in with the paste-the-code way.
 func WaitForCode(ctx context.Context, p PKCE, addrs ...string) (string, error) {
+	return WaitForCodeReady(ctx, p, nil, addrs...)
+}
+
+// WaitForCodeReady is WaitForCode that reports on ready (nil = the
+// port is open, so the browser can be sent to Dropbox now) before it
+// waits. A failure to listen is sent on ready and returned.
+func WaitForCodeReady(ctx context.Context, p PKCE, ready chan<- error, addrs ...string) (string, error) {
 	if len(addrs) == 0 {
 		addrs = []string{"127.0.0.1:47800", "[::1]:47800"}
 	}
@@ -94,7 +101,11 @@ func WaitForCode(ctx context.Context, p PKCE, addrs ...string) (string, error) {
 		ln, err := net.Listen("tcp", a)
 		if err != nil {
 			if i == 0 {
-				return "", fmt.Errorf("cannot listen on %s (is orOS Portable running?): %w", a, err)
+				err = fmt.Errorf("cannot listen on %s (is orOS Portable running?): %w", a, err)
+				if ready != nil {
+					ready <- err
+				}
+				return "", err
 			}
 			continue
 		}
@@ -106,6 +117,9 @@ func WaitForCode(ctx context.Context, p PKCE, addrs ...string) (string, error) {
 		go srv.Serve(ln)
 	}
 	defer srv.Close()
+	if ready != nil {
+		ready <- nil
+	}
 	select {
 	case r := <-done:
 		return r.code, r.err
