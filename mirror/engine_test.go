@@ -613,9 +613,11 @@ func TestLocalChangeDuringPassWins(t *testing.T) {
 	a.sync()
 	e.put(R+"/a.txt", "from orOS")
 	// The user saves between the scan and the download.
+	r, _ := e.browser().FetchManifest()
+	ent := r.Files[R+"/a.txt"]
 	lf := &localFile{Size: 2, MTime: 0}
-	if err := a.download(&a.pairs[0], &State{Files: map[string]*Record{}}, "a.txt", filepath.Join(la, "a.txt"), vault.Entry{}, lf); err == nil {
-		t.Fatal("expected a refusal")
+	if err := a.download(&OSFolder{Root: la}, &State{Files: map[string]*Record{}}, "a.txt", ent, lf); err != errChanged {
+		t.Fatalf("expected errChanged, got %v", err)
 	}
 	if got, _ := read(t, la, "a.txt"); got != "v1" {
 		t.Fatal(got)

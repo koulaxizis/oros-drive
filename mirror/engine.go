@@ -11,14 +11,11 @@
 package mirror
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
-	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -122,6 +119,10 @@ type Engine struct {
 	Opt      Options
 	Now      func() time.Time
 	Log      func(Event)
+	// Folder opens a pair's folder; nil = OSFolder on Pair.Local with
+	// Trash (desktop). Android serves folders granted through the
+	// system picker.
+	Folder func(Pair) Folder
 	// CanCreate: allowed to write the first manifest of an empty vault.
 	// The app sets it only when the vault key in hand belongs to the
 	// key file in the cloud, so a reset vault is never rebuilt with an
@@ -132,6 +133,13 @@ type Engine struct {
 }
 
 var ErrTooManyConflicts = errors.New("the vault kept changing during the sync; will try again")
+
+func (e *Engine) folder(p Pair) Folder {
+	if e.Folder != nil {
+		return e.Folder(p)
+	}
+	return &OSFolder{Root: p.Local, Name: p.Name(), Trash: e.Trash}
+}
 
 func (e *Engine) now() time.Time {
 	if e.Now != nil {
@@ -173,8 +181,8 @@ func (e *Engine) Sync(pairs []Pair, approve map[string]bool) (*Result, error) {
 type work struct {
 	pair   *Pair
 	st     *State
+	f      Folder
 	rel    string
-	abs    string
 	hash   string // expected content
 	size   int64
 	mtime  int64
@@ -201,7 +209,8 @@ func (e *Engine) pass(remote *vault.Remote, pairs []Pair, approve map[string]boo
 			fs.State, fs.Error = StateError, err.Error()
 			continue
 		}
-		if info, err := os.Stat(p.Local); err != nil || !info.IsDir() {
+		f := e.folder(*p)
+		if info, err := f.Stat(""); err != nil || !info.Dir {
 			fs.State = StateMissing
 			continue
 		}
@@ -213,7 +222,7 @@ func (e *Engine) pass(remote *vault.Remote, pairs []Pair, approve map[string]boo
 			continue
 		}
 		states[p.ID] = st
-		w, err := e.planFolder(p, st, remote, approve[p.ID], opt, res, fs)
+		w, err := e.planFolder(p, f, st, remote, approve[p.ID], opt, res, fs)
 		if err != nil {
 			fs.State, fs.Error = StateError, err.Error()
 		}
@@ -254,8 +263,8 @@ func under(paths []string, rel string) bool {
 
 // planFolder applies the cloud's changes to one folder and returns the
 // uploads and vault removals it needs.
-func (e *Engine) planFolder(p *Pair, st *State, remote *vault.Remote, approved bool, opt Options, res *Result, fs *FolderStatus) ([]*work, error) {
-	sc, err := scan(p.Local, st, e.now(), opt.StableAfter)
+func (e *Engine) planFolder(p *Pair, f Folder, st *State, remote *vault.Remote, approved bool, opt Options, res *Result, fs *FolderStatus) ([]*work, error) {
+	sc, err := scan(f, st, e.now(), opt.StableAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -378,14 +387,13 @@ func (e *Engine) planFolder(p *Pair, st *State, remote *vault.Remote, approved b
 
 	var todo []*work
 	for _, s := range steps {
-		abs := filepath.Join(p.Local, filepath.FromSlash(s.rel))
 		switch s.act {
 		case Download:
 			if other, ok := sc.fold[strings.ToLower(s.rel)]; ok && caseFolds(goos) && other != s.rel {
 				fs.Skipped = append(fs.Skipped, s.rel)
 				continue
 			}
-			if err := e.download(p, st, s.rel, abs, s.ent, s.lf); err != nil {
+			if err := e.download(f, st, s.rel, s.ent, s.lf); err != nil {
 				res.Failed++
 				e.log("error", p.Name(), s.rel, err.Error())
 				continue
@@ -396,7 +404,7 @@ func (e *Engine) planFolder(p *Pair, st *State, remote *vault.Remote, approved b
 			if held {
 				continue
 			}
-			if err := e.removeLocal(p, s.rel, abs, s.lf); err != nil {
+			if err := e.removeLocal(f, s.rel, s.lf); err != nil {
 				res.Failed++
 				e.log("error", p.Name(), s.rel, err.Error())
 				continue
@@ -414,13 +422,13 @@ func (e *Engine) planFolder(p *Pair, st *State, remote *vault.Remote, approved b
 				fs.LocalOnly = append(fs.LocalOnly, s.rel)
 				continue
 			}
-			todo = append(todo, &work{pair: p, st: st, rel: s.rel, abs: abs, hash: s.lf.Hash, size: s.lf.Size, mtime: s.lf.MTime})
+			todo = append(todo, &work{pair: p, st: st, f: f, rel: s.rel, hash: s.lf.Hash, size: s.lf.Size, mtime: s.lf.MTime})
 		case Conflict:
 			if s.lf.Size > opt.MaxFileSize {
 				fs.LocalOnly = append(fs.LocalOnly, s.rel)
 				continue
 			}
-			w, err := e.conflictCopy(p, st, s.rel, s.ent, sc, cloud)
+			w, err := e.conflictCopy(p, f, st, s.rel, s.ent, sc, cloud)
 			if err != nil {
 				res.Failed++
 				e.log("error", p.Name(), s.rel, err.Error())
@@ -430,7 +438,7 @@ func (e *Engine) planFolder(p *Pair, st *State, remote *vault.Remote, approved b
 			if w != nil {
 				todo = append(todo, w)
 			}
-			todo = append(todo, &work{pair: p, st: st, rel: s.rel, abs: abs, hash: s.lf.Hash, size: s.lf.Size, mtime: s.lf.MTime})
+			todo = append(todo, &work{pair: p, st: st, f: f, rel: s.rel, hash: s.lf.Hash, size: s.lf.Size, mtime: s.lf.MTime})
 		}
 	}
 	for rel, r := range st.Files {
@@ -467,95 +475,43 @@ var errChanged = errors.New("changed on this computer while syncing; will sync n
 
 // unchanged: the file is still what the scan saw (VD-4: a local change
 // made during the pass is never overwritten or removed).
-func unchanged(abs string, lf *localFile) bool {
-	info, err := os.Lstat(abs)
+func unchanged(f Folder, rel string, lf *localFile) bool {
+	fi, err := f.Stat(rel)
 	if lf == nil {
-		return errors.Is(err, os.ErrNotExist)
+		return isNotExist(err)
 	}
-	return err == nil && info.Mode().IsRegular() && info.Size() == lf.Size && info.ModTime().UnixNano() == lf.MTime
+	return err == nil && fi.Regular && fi.Size == lf.Size && fi.MTime == lf.MTime
 }
 
-func (e *Engine) download(p *Pair, st *State, rel, abs string, ent vault.Entry, lf *localFile) error {
+func (e *Engine) download(f Folder, st *State, rel string, ent vault.Entry, lf *localFile) error {
 	plain, err := e.Vault.Download(ent)
 	if err != nil {
 		return err
 	}
-	if !unchanged(abs, lf) {
+	if !unchanged(f, rel, lf) {
 		return errChanged
 	}
-	rec, err := writeAtomic(abs, plain, ent.H)
+	fi, err := f.Write(rel, plain)
 	if err != nil {
 		return err
 	}
-	st.Files[rel] = rec
+	// The record makes the next scan see the engine's own write as
+	// already synced.
+	st.Files[rel] = &Record{Size: fi.Size, MTime: fi.MTime, Local: ent.H, Base: ent.H}
 	return nil
 }
 
-// writeAtomic writes into a temp file beside abs and renames it over,
-// so no reader ever sees half a file. The record it returns makes the
-// next scan see the engine's own write as already synced.
-func writeAtomic(abs string, data []byte, hash string) (*Record, error) {
-	dir := filepath.Dir(abs)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	var rnd [6]byte
-	rand.Read(rnd[:])
-	tmp := filepath.Join(dir, tmpPrefix+hex.EncodeToString(rnd[:]))
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return nil, err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return nil, err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return nil, err
-	}
-	if err := os.Rename(tmp, abs); err != nil {
-		os.Remove(tmp)
-		return nil, err
-	}
-	info, err := os.Stat(abs)
-	if err != nil {
-		return nil, err
-	}
-	return &Record{Size: info.Size(), MTime: info.ModTime().UnixNano(), Local: hash, Base: hash}, nil
-}
-
-func (e *Engine) removeLocal(p *Pair, rel, abs string, lf *localFile) error {
-	if !unchanged(abs, lf) {
+func (e *Engine) removeLocal(f Folder, rel string, lf *localFile) error {
+	if !unchanged(f, rel, lf) {
 		return errChanged
 	}
-	if e.Trash != nil {
-		if err := e.Trash.Move(abs, p.Name(), rel); err != nil {
-			return err
-		}
-	} else if err := os.Remove(abs); err != nil {
-		return err
-	}
-	// Remove folders the deletion left empty, up to the mirrored folder.
-	root := filepath.Clean(p.Local)
-	for d := filepath.Dir(abs); d != root && strings.HasPrefix(d, root); d = filepath.Dir(d) {
-		if os.Remove(d) != nil {
-			break
-		}
-	}
-	return nil
+	return f.Remove(rel)
 }
 
 // conflictCopy writes the cloud's version beside the local file, once
 // per cloud version, and returns the upload of the copy (its object is
 // already in the vault, so only the manifest entry goes up).
-func (e *Engine) conflictCopy(p *Pair, st *State, rel string, ent vault.Entry, sc *scanResult, cloud map[string]vault.Entry) (*work, error) {
+func (e *Engine) conflictCopy(p *Pair, f Folder, st *State, rel string, ent vault.Entry, sc *scanResult, cloud map[string]vault.Entry) (*work, error) {
 	if st.Conflicts[rel] == ent.H {
 		return nil, nil
 	}
@@ -569,21 +525,20 @@ func (e *Engine) conflictCopy(p *Pair, st *State, rel string, ent vault.Entry, s
 		crel = ConflictName(rel, now, n)
 		_, inScan := sc.files[crel]
 		_, inCloud := cloud[crel]
-		_, statErr := os.Lstat(filepath.Join(p.Local, filepath.FromSlash(crel)))
-		if !inScan && !inCloud && errors.Is(statErr, os.ErrNotExist) {
+		_, statErr := f.Stat(crel)
+		if !inScan && !inCloud && isNotExist(statErr) {
 			break
 		}
 	}
-	cabs := filepath.Join(p.Local, filepath.FromSlash(crel))
-	rec, err := writeAtomic(cabs, plain, ent.H)
+	fi, err := f.Write(crel, plain)
 	if err != nil {
 		return nil, err
 	}
-	rec.Base = "" // not in the cloud under this name yet
+	rec := &Record{Size: fi.Size, MTime: fi.MTime, Local: ent.H} // no Base: not in the cloud under this name yet
 	st.Files[crel] = rec
 	st.Conflicts[rel] = ent.H
 	e.log("conflict-copy", p.Name(), crel, rel)
-	return &work{pair: p, st: st, rel: crel, abs: cabs, hash: ent.H, size: rec.Size, mtime: rec.MTime, copyOf: rel}, nil
+	return &work{pair: p, st: st, f: f, rel: crel, hash: ent.H, size: rec.Size, mtime: rec.MTime, copyOf: rel}, nil
 }
 
 func mimeOf(rel string) string {
@@ -615,7 +570,7 @@ func (e *Engine) commit(remote *vault.Remote, todo []*work, opt Options, res *Re
 				done = append(done, w)
 				continue
 			}
-			data, err := os.ReadFile(w.abs)
+			data, err := readAll(w.f, w.rel)
 			if err != nil {
 				res.Failed++
 				e.log("error", w.pair.Name(), w.rel, err.Error())
@@ -666,4 +621,13 @@ func (e *Engine) commit(remote *vault.Remote, todo []*work, opt Options, res *Re
 		}
 	}
 	return nil
+}
+
+func readAll(f Folder, rel string) ([]byte, error) {
+	r, err := f.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }

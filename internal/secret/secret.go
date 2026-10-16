@@ -43,10 +43,27 @@ type vaultKeyJSON struct {
 	VaultKey
 }
 
+// Backend is a platform keystore supplied by the host app (Android:
+// values encrypted with a key in the Android Keystore). Get returns ""
+// for a missing item.
+type Backend interface {
+	Get(name string) (string, error)
+	Set(name, value string) error
+	Delete(name string) error
+}
+
+var backend Backend
+
+// SetBackend makes every secret go to b instead of the OS keychain.
+func SetBackend(b Backend) { backend = b }
+
 func useKeyring() bool { return os.Getenv("OROS_DRIVE_NO_KEYRING") == "" }
 
 // Where tells where secrets are kept: "keychain" or "file".
 func Where() string {
+	if backend != nil {
+		return "keychain"
+	}
 	if !useKeyring() {
 		return "file"
 	}
@@ -65,6 +82,13 @@ func file(item string) (string, error) {
 }
 
 func get(item string) ([]byte, error) {
+	if backend != nil {
+		v, err := backend.Get(item)
+		if err != nil || v == "" {
+			return nil, err
+		}
+		return []byte(v), nil
+	}
 	if useKeyring() {
 		s, err := keyring.Get(service, item)
 		if err == nil {
@@ -91,6 +115,9 @@ func getFile(item string) ([]byte, error) {
 }
 
 func set(item string, b []byte) error {
+	if backend != nil {
+		return backend.Set(item, string(b))
+	}
 	if useKeyring() {
 		if err := keyring.Set(service, item, string(b)); err == nil {
 			delFile(item) // an older plain copy goes
@@ -118,6 +145,9 @@ func delFile(item string) {
 }
 
 func del(item string) error {
+	if backend != nil {
+		return backend.Delete(item)
+	}
 	if useKeyring() {
 		if err := keyring.Delete(service, item); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 			delFile(item)

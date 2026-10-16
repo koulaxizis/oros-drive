@@ -55,6 +55,10 @@ type Service struct {
 	Version string
 	// Store overrides Dropbox (tests).
 	Store vault.Store
+	// Folders serves mirrored folders that are not directories (Android:
+	// folders granted through the system picker, Pair.Local holding the
+	// grant). nil = desktop directories.
+	Folders func(mirror.Pair) mirror.Folder
 
 	mu       sync.Mutex
 	settings *config.Settings
@@ -338,6 +342,9 @@ func inside(a, b string) bool {
 // /Drive/<device>/<name>. The first pass only adds: nothing on either
 // side is deleted because of it.
 func (s *Service) AddFolder(local, name string) (mirror.Pair, error) {
+	if s.Folders != nil {
+		return s.addGranted(local, name)
+	}
 	if !filepath.IsAbs(local) {
 		return mirror.Pair{}, errors.New("give the full path of the folder")
 	}
@@ -374,6 +381,36 @@ func (s *Service) AddFolder(local, name string) (mirror.Pair, error) {
 		}
 	}
 	p := mirror.Pair{ID: randomID(), Local: local, Remote: remote}
+	s.settings.Folders = append(s.settings.Folders, p)
+	if err := s.settings.Save(); err != nil {
+		s.settings.Folders = s.settings.Folders[:len(s.settings.Folders)-1]
+		return mirror.Pair{}, err
+	}
+	defer s.settingsChanged()
+	return p, nil
+}
+
+// addGranted adds a folder the host app holds a grant for (Android).
+func (s *Service) addGranted(local, name string) (mirror.Pair, error) {
+	name = config.CleanName(name)
+	if local == "" || name == "" || !mirror.LocalNameOK(name, "windows") {
+		return mirror.Pair{}, errors.New("choose another name")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	remote := path.Join(mirror.DriveRoot, s.settings.Device, name)
+	for _, p := range s.settings.Folders {
+		if p.Local == local {
+			return mirror.Pair{}, errors.New("this folder is already mirrored")
+		}
+		if strings.EqualFold(p.Remote, remote) {
+			return mirror.Pair{}, fmt.Errorf("the name %q is already used; choose another", name)
+		}
+	}
+	p := mirror.Pair{ID: randomID(), Local: local, Remote: remote}
+	if info, err := s.Folders(p).Stat(""); err != nil || !info.Dir {
+		return mirror.Pair{}, errors.New("this folder cannot be opened")
+	}
 	s.settings.Folders = append(s.settings.Folders, p)
 	if err := s.settings.Save(); err != nil {
 		s.settings.Folders = s.settings.Folders[:len(s.settings.Folders)-1]
@@ -529,6 +566,7 @@ func (s *Service) engineLocked() (*mirror.Engine, error) {
 			MaxDeletes:  s.settings.MaxDeletes,
 		},
 		Log:       s.addEvent,
+		Folder:    s.Folders,
 		CanCreate: func() error { return s.keyFileMatches(st, vk) },
 	}
 	s.engine = e
@@ -589,6 +627,10 @@ func (s *Service) SyncOnce() (busy bool, err error) {
 	}
 	return busy, err
 }
+
+// RemoteMoved tells whether another device changed the vault since the
+// last pass (Android's background worker asks before a full pass).
+func (s *Service) RemoteMoved() bool { return s.remoteMoved() }
 
 // remoteMoved: one cheap metadata call tells whether another device
 // changed the vault since the last pass.

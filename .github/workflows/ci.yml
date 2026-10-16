@@ -70,3 +70,28 @@ jobs:
         with:
           name: orosdrive
           path: out/
+
+  # The Android library the orOS Android app embeds (wave 4): proves
+  # mobile/ binds with gomobile. koulaxizis/oros android.yml runs the
+  # same command on a pinned commit of this repo.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: gomobile bind
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          gomobile bind -target=android -androidapi 24 -javapkg online.useoros.drive -o out/orosdrive.aar ./mobile
+          unzip -l out/orosdrive.aar | grep -E 'classes.jar|libgojni.so'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orosdrive-aar
+          path: out/orosdrive.aar
