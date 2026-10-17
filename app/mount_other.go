@@ -7,3 +7,5 @@ const mountSupported = false
 
 func (s *Service) syncMount() {}
 func (s *Service) unmount()   {}
+
+func (s *Service) forgetMountLocked(old, now string) error { return nil }

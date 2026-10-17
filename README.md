@@ -6,7 +6,7 @@ Mirror chosen folders of your computer or phone into the encrypted [orOS](https:
 
 ## The app
 
-Start `orOS Drive.exe` (Windows) or `orosdrive` (Linux; the .deb adds it to the menu). The settings open in your browser:
+On Windows run `orOS-Drive-Setup-<version>.exe` (no administrator rights needed; it adds orOS Drive to the Start menu and, if you keep the box ticked, starts it when you sign in), or unzip the portable zip and start `orOS Drive.exe`. On Linux install the .deb (it adds orOS Drive to the menu) or run `orosdrive` from the tarball. The settings open in your browser:
 
 1. **Sign in to Dropbox**, the account orOS syncs with. Sign-in comes back to `http://localhost:47800/` (the address orOS Portable also uses, so close Portable for that moment).
 2. **Unlock the vault** with your orOS sync passphrase. It unwraps the vault key, which goes into the system keychain (Windows Credential Manager, the Secret Service on Linux). The passphrase itself is never stored. Without a keychain (a Linux server) the key is kept in a file only you can read, and the page says so.
@@ -27,7 +27,7 @@ The app then lives in the tray (on GNOME the tray needs the AppIndicator extensi
 
 ### The orOS disk as a folder (Linux)
 
-Settings › "The orOS disk as a folder" (or `orosdrive mount`) shows the whole orOS disk at `~/orOS` while the app runs. Files download when a program opens them and upload when it saves them; what you opened stays in a cache (2 GB, the oldest copies go first). Saving works like anywhere else: programs that write a temp file and rename it over the original (office suites, editors) are fine, and their lock and temp files stay on this computer. A file changed in orOS while you had it open is kept beside yours as a conflict copy; a folder you delete keeps any file someone else changed meanwhile. On Linux it needs FUSE (`fuse3`, present on most desktops). On Windows (10 1709 or later) it uses Cloud Files, the system OneDrive uses: every file is listed with its size and date and downloads when a program opens it; deleting or renaming in Explorer reaches orOS first (and fails if orOS can't be reached, so nothing comes back on its own). While the vault is locked the folder stays, but files never opened can't be opened. Turning the setting off keeps the files you opened as normal files and removes the rest (they are in orOS). Empty folders you make here show on this computer until a file goes in them (the vault keeps files only).
+Settings › "The orOS disk as a folder" (or `orosdrive mount`) shows the whole orOS disk at `~/orOS` while the app runs. Files download when a program opens them and upload when it saves them; what you opened stays in a cache (2 GB, the oldest copies go first). Saving works like anywhere else: programs that write a temp file and rename it over the original (office suites, editors) are fine, and their lock and temp files stay on this computer. A file changed in orOS while you had it open is kept beside yours as a conflict copy; a folder you delete keeps any file someone else changed meanwhile. On Linux it needs FUSE (`fuse3`, present on most desktops). On Windows (10 1709 or later) it uses Cloud Files, the system OneDrive uses: every file is listed with its size and date and downloads when a program opens it; deleting or renaming in Explorer reaches orOS first (and fails if orOS can't be reached, so nothing comes back on its own). While the vault is locked the folder stays, but files never opened can't be opened. Turning the setting off (also while the vault is locked or the app is not running, and when uninstalling) keeps the files you opened as normal files and removes the rest (they are in orOS). Empty folders you make here show on this computer until a file goes in them (the vault keeps files only).
 
 ## Command line
 
@@ -50,7 +50,7 @@ When the app is running, `add`, `remove`, `unlock` and `sync` go through it. `--
 
 ## Downloads
 
-Releases (tag `v*`) carry Windows zips (`orOS Drive.exe` without a console window + `orosdrive.exe` for the terminal), Linux tarballs and `.deb` packages for amd64 and arm64. Every CI run attaches the same files as the `orosdrive` artifact. The Windows exe is not signed yet, so SmartScreen may warn the first time ("More info › Run anyway").
+Releases (tag `v*`, or Actions › Release › "Run workflow" with a version) carry the Windows setup (one for x64 and ARM64; uninstalling turns a folder showing the orOS disk back into a normal folder and offers to delete the settings and sign-in, never your folders), Windows zips (`orOS Drive.exe` without a console window + `orosdrive.exe` for the terminal), Linux tarballs and `.deb` packages for amd64 and arm64. Every CI run attaches the same files as the `orosdrive` artifact. The Windows exe is not signed yet, so SmartScreen may warn the first time ("More info › Run anyway").
 
 ## How it works
 
@@ -75,7 +75,7 @@ orOS Drive implements the same format and the same rules (conditional writes on 
 | `internal/secret/` | keychain storage for the Dropbox sign-in and the vault key |
 | `internal/config/` | settings (`app.json`) and per-folder state |
 | `cmd/orosdrive/` | the program: the app and the command line |
-| `packaging/` | release files (`package.sh`) and the smoke test CI runs on Windows and Linux |
+| `packaging/` | release files (`package.sh`), the Windows setup (`windows/oros-drive.iss`, tested by `windows/test-setup.ps1`) and the smoke test CI runs on Windows and Linux |
 | `interop/` | runs the real `sync.js` + `vault.js` in Node to hand vaults back and forth |
 
 ## Tests

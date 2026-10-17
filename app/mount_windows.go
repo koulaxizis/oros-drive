@@ -75,6 +75,21 @@ func (s *Service) syncMount() {
 	s.mnt.srv = srv
 }
 
+// forgetMountLocked ends the old folder's life as the orOS disk when
+// the setting moves away from it and no connection here will do it:
+// the vault is locked, or this is not the running app (the setting
+// changed from the command line, or by the uninstaller). Otherwise
+// Windows keeps a folder of placeholders nothing can open.
+func (s *Service) forgetMountLocked(old, now string) error {
+	if old == "" || strings.EqualFold(old, now) {
+		return nil
+	}
+	if s.mnt.srv != nil && strings.EqualFold(s.mnt.path, old) {
+		return nil // syncMount unmounts it first, then unregisters
+	}
+	return cloudfiles.Unregister(old, cfState(old))
+}
+
 func (s *Service) unmount() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

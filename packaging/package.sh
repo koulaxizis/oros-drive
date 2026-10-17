@@ -3,12 +3,18 @@
 #   orosdrive-<v>-windows-<arch>.zip  orosdrive.exe (terminal) + "orOS Drive.exe" (no console window)
 #   orosdrive-<v>-linux-<arch>.tar.gz orosdrive + .desktop entry + icon
 #   oros-drive_<v>_<arch>.deb         Debian / Ubuntu / Mint package
+# and stages the Windows setup's files into out-setup/ (the Release
+# workflow builds orOS-Drive-Setup-<v>.exe from them on Windows).
 # Usage: packaging/package.sh <version>
 set -euo pipefail
 v="${1:?version}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 out="$root/out"
-rm -rf "$out" && mkdir -p "$out"
+setup="$root/out-setup"
+rm -rf "$out" "$setup" && mkdir -p "$out" "$setup/files"
+cp "$root/packaging/windows/oros-drive.iss" "$root/packaging/windows/Greek.isl" "$root/packaging/windows/oros-drive.ico" "$setup/"
+cp "$root/LICENSE" "$setup/files/LICENSE.txt"
+echo "$v" > "$setup/VERSION"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ld="-s -w -X main.version=$v"
@@ -29,6 +35,8 @@ orosdrive.exe is the same program for the terminal (orosdrive help).
 Free and open source (MIT): https://github.com/koulaxizis/oros-drive
 TXT
   (cd "$d" && zip -q -9 "$out/orosdrive-$v-windows-$arch.zip" ./*)
+  mkdir -p "$setup/files/$arch"
+  cp "$d/orosdrive.exe" "$d/orOS Drive.exe" "$setup/files/$arch/"
 
   d="$work/linux-$arch/orosdrive-$v"; mkdir -p "$d"
   CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "$ld" -o "$d/orosdrive" "$root/cmd/orosdrive"
