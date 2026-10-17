@@ -1,9 +1,11 @@
 name: Release
 
-# A tag like v0.3.0 builds the Windows zips, Linux tarballs and .deb
-# packages and publishes them as a GitHub release. "Run workflow" with
-# a version does the same from main and creates the tag (for when the
-# tag cannot be pushed, e.g. from the GitHub app or a bot).
+# A tag like v0.3.0 builds the Windows setup and zips, the Linux
+# tarballs and .deb packages and publishes them as a GitHub release.
+# "Run workflow" with a version does the same from main and creates the
+# tag (for when the tag cannot be pushed, e.g. from the GitHub app or a
+# bot). A pull request that touches the packaging builds everything and
+# tests the setup on Windows, without publishing.
 on:
   push:
     tags: ["v*"]
@@ -12,32 +14,97 @@ on:
       version:
         description: "Version to release, like 0.1.0 (the tag v0.1.0 is created)"
         required: true
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/release.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  package:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - name: Version
+        id: version
         env:
           INPUT: ${{ inputs.version }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            v="${INPUT#v}"
-          else
-            v="${GITHUB_REF_NAME#v}"
-          fi
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch) v="${INPUT#v}" ;;
+            pull_request) v=0.0.0 ;;
+            *) v="${GITHUB_REF_NAME#v}" ;;
+          esac
           echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::bad version '$v'"; exit 1; }
-          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - run: go test ./...
-      - run: packaging/package.sh "$VERSION"
+      - run: packaging/package.sh "${{ steps.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: files
+          path: out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup-files
+          path: out-setup/
+
+  windows-setup:
+    needs: package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: setup-files
+          path: setup
+      - name: Build orOS-Drive-Setup.exe
+        shell: pwsh
+        run: |
+          # Greek.isl is written for Inno Setup 6.5+, newer than some runner images.
+          choco upgrade innosetup -y --no-progress
+          if ($LASTEXITCODE) { exit 1 }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $ver = (Get-Content setup/VERSION).Trim()
+          & $iscc /Qp "/DAppVer=$ver" setup/oros-drive.iss
+          if ($LASTEXITCODE) { exit 1 }
+          Get-ChildItem setup/orOS-Drive-Setup-*.exe | Format-Table Name, Length
+      - name: Install test (install, upgrade over the running app, uninstall)
+        shell: pwsh
+        run: packaging/windows/test-setup.ps1 (Get-ChildItem setup/orOS-Drive-Setup-*.exe).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: setup
+          path: setup/orOS-Drive-Setup-*.exe
+
+  publish:
+    needs: [package, windows-setup]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: files
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          name: setup
+          path: out
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v$VERSION" out/* --target "$GITHUB_SHA" --title "orOS Drive v$VERSION" --generate-notes
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          cd out
+          rm -f SHA256SUMS.txt
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "v$VERSION" ./* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "orOS Drive v$VERSION" --generate-notes

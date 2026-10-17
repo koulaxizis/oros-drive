@@ -538,6 +538,9 @@ func (s *Service) SetPrefs(p Prefs) error {
 			}
 			m = filepath.Clean(m)
 		}
+		if err := s.forgetMountLocked(s.settings.Mount, m); err != nil {
+			return err
+		}
 		s.settings.Mount = m
 	}
 	if p.Autostart != nil {

@@ -86,3 +86,54 @@ func TestExplorerFolderFollowsTheSetting(t *testing.T) {
 		t.Fatalf("%+v", m)
 	}
 }
+
+// Turned off while the folder is not connected (locked, or the setting
+// changed from the command line or the uninstaller): Windows forgets
+// the folder all the same, and a downloaded file stays.
+func TestExplorerFolderOffWhileNotConnected(t *testing.T) {
+	if !mountSupported {
+		t.Skip("no Cloud Files API")
+	}
+	s, dir := newService(t)
+	if err := s.Unlock(pass, true); err != nil {
+		t.Fatal(err)
+	}
+	v := vault.New(s.Store, vault.NewPassphrase(pass))
+	if err := v.PutFiles(map[string]vault.File{"/internal/a.txt": {Data: []byte("a")}, "/internal/b.txt": {Data: []byte("b")}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	mnt := filepath.Join(dir, "orOS")
+	if err := s.SetPrefs(Prefs{Mount: &mnt}); err != nil {
+		t.Fatal(err)
+	}
+	s.syncMount()
+	if st := s.Status().Mount; !st.Mounted {
+		t.Skipf("cannot connect here: %s", st.Error)
+	}
+	var b []byte
+	var err error
+	for i := 0; i < 50; i++ {
+		if b, err = os.ReadFile(filepath.Join(mnt, "a.txt")); err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if string(b) != "a" {
+		t.Fatalf("%q %v", b, err)
+	}
+	s.Lock()
+	s.syncMount()
+	off := ""
+	if err := s.SetPrefs(Prefs{Mount: &off}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := cloudfiles.Registered(mnt); ok {
+		t.Fatal("still registered after the setting was turned off while locked")
+	}
+	if b, err := os.ReadFile(filepath.Join(mnt, "a.txt")); err != nil || string(b) != "a" {
+		t.Fatalf("downloaded file: %q %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(mnt, "b.txt")); !os.IsNotExist(err) {
+		t.Fatal("a file never downloaded is left behind:", err)
+	}
+}

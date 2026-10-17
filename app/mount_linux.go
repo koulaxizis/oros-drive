@@ -75,3 +75,6 @@ func (s *Service) unmount() {
 		s.mnt.srv = nil
 	}
 }
+
+// forgetMountLocked: a FUSE mount leaves nothing behind once unmounted.
+func (s *Service) forgetMountLocked(old, now string) error { return nil }
