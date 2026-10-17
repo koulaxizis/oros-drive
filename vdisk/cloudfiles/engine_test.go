@@ -350,6 +350,11 @@ func (en *env) vault() map[string]string {
 func (en *env) pass() Report {
 	en.t.Helper()
 	en.clock = en.clock.Add(time.Second)
+	// The disk's manifest TTL runs on the real clock, too coarse on
+	// Windows to tell two steps of a test apart.
+	if err := en.e.Disk.Refresh(true); err != nil {
+		en.t.Fatal(err)
+	}
 	rep, err := en.e.Pass()
 	if err != nil {
 		en.t.Fatal(err)
@@ -649,5 +654,43 @@ func TestStateSurvivesARestart(t *testing.T) {
 	again := &Engine{Disk: en.e.Disk, Local: en.f, StatePath: en.e.StatePath, GOOS: "windows", Settle: time.Nanosecond}
 	if got := keysOf(again.Synced()); got != "a.txt" {
 		t.Fatal(got)
+	}
+}
+
+// Windows asks first and carries the deletion or move out after the
+// answer; a pass that runs in between must not bring the file back.
+func TestAPassDuringADeleteOrMoveBringsNothingBack(t *testing.T) {
+	en := newEnv(t)
+	en.browser(map[string]string{"a.txt": "a", "Docs/b.txt": "b"})
+	en.pass()
+	if err := en.e.OnDelete("a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := en.e.OnRename("Docs", "Moved", true, true); err != nil {
+		t.Fatal(err)
+	}
+	en.pass() // the folder still shows a.txt and Docs/b.txt
+	v := en.vault()
+	if _, ok := v["a.txt"]; ok || v["Moved/b.txt"] != "b" || len(v) != 1 {
+		t.Fatal("brought back", v)
+	}
+	en.f.mu.Lock()
+	delete(en.f.files, "a.txt")
+	en.f.files["Moved"], en.f.files["Moved/b.txt"] = en.f.files["Docs"], en.f.files["Docs/b.txt"]
+	delete(en.f.files, "Docs")
+	delete(en.f.files, "Docs/b.txt")
+	en.f.mu.Unlock()
+	en.pass()
+	if got := en.f.names(); got != "Moved/ Moved/b.txt" {
+		t.Fatal(got)
+	}
+	if v := en.vault(); len(v) != 1 {
+		t.Fatal(v)
+	}
+	// A new file under the old name later is a new file.
+	en.f.write("a.txt", "new")
+	en.pass()
+	if en.vault()["a.txt"] != "new" {
+		t.Fatal("a new file under a deleted name was not uploaded")
 	}
 }

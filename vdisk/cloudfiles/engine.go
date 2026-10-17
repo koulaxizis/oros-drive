@@ -101,6 +101,7 @@ type Engine struct {
 	dirty   bool
 	state   map[string]string    // rel → content hash, or dirLocal / dirRemote
 	missing map[string]time.Time // synced, gone here, no delete callback yet
+	leaving map[string]time.Time // told orOS of its deletion or move; Windows has not finished it
 	tooBig  map[string]string    // rel → size/mtime that was refused
 }
 
@@ -182,6 +183,7 @@ func (e *Engine) load() error {
 	}
 	e.state = map[string]string{}
 	e.missing = map[string]time.Time{}
+	e.leaving = map[string]time.Time{}
 	e.tooBig = map[string]string{}
 	if e.StatePath != "" {
 		b, err := os.ReadFile(e.StatePath)
@@ -305,7 +307,24 @@ func (e *Engine) Pass() (Report, error) {
 		}
 		delete(e.missing, rel) // here again
 	}
+	for rel, since := range e.leaving {
+		if _, ok := local[rel]; !ok || e.now().Sub(since) > 2*time.Minute {
+			delete(e.leaving, rel) // done (or refused by something else)
+		}
+	}
+	leaving := make([]string, 0, len(e.leaving))
+	for rel := range e.leaving {
+		leaving = append(leaving, rel)
+	}
 	e.mu.Unlock()
+	isLeaving := func(rel string) bool {
+		for _, k := range leaving {
+			if rel == k || strings.HasPrefix(rel, k+"/") {
+				return true
+			}
+		}
+		return false
+	}
 	state := e.snapshotState()
 	all := map[string]bool{}
 	for rel := range local {
@@ -350,6 +369,11 @@ func (e *Engine) Pass() (Report, error) {
 		l, lok := local[rel]
 		r, rok := remote[rel]
 		s, sok := state[rel]
+		if lok && isLeaving(rel) {
+			// Being deleted or moved: orOS already knows. Uploading it
+			// now would bring it back.
+			continue
+		}
 		switch {
 		case lok && rok && l.Dir != r.Dir:
 			rep.Skipped = append(rep.Skipped, rel)
@@ -615,8 +639,17 @@ func (e *Engine) OnDelete(rel string) error {
 		return err
 	}
 	e.forget(rel)
+	e.goingAway(rel)
 	e.logf("deleted-orOS", rel, "")
 	return e.Save()
+}
+
+// goingAway marks rel as told to orOS while Windows still carries the
+// deletion or move out (a pass may run in between).
+func (e *Engine) goingAway(rel string) {
+	e.mu.Lock()
+	e.leaving[rel] = e.now()
+	e.mu.Unlock()
 }
 
 // OnRename: a program renames or moves a placeholder. in says whether
@@ -649,6 +682,7 @@ func (e *Engine) OnRename(from, to string, fromIn, toIn bool) error {
 			}
 		}
 		e.dirty = true
+		e.leaving[from] = e.now()
 		e.mu.Unlock()
 		e.logf("renamed-orOS", from, to)
 		return e.Save()

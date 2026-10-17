@@ -81,6 +81,9 @@ func TestExplorerFolder(t *testing.T) {
 	sync := func() {
 		t.Helper()
 		time.Sleep(20 * time.Millisecond) // past Settle
+		if err := d.Refresh(true); err != nil {
+			t.Fatal(err)
+		}
 		rep, err := srv.Sync()
 		if err != nil {
 			t.Fatal(err)
