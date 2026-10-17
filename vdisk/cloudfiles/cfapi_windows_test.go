@@ -49,6 +49,8 @@ func TestExplorerFolder(t *testing.T) {
 	en.browser(map[string]string{"Docs/a.txt": "alpha", "Docs/sub/b.txt": "beta", "Docs/word.docx": "v1"})
 	d := &vdisk.Disk{Vault: vault.New(en.store, nil).WithKeys(keys), CacheDir: filepath.Join(en.root, "cache"), TTL: time.Nanosecond}
 	dir := filepath.Join(en.root, "orOS")
+	Debug = func(msg string) { t.Log(time.Now().Format("15:04:05.000"), msg) }
+	defer func() { Debug = nil }()
 	srv, err := Mount(d, dir, Options{
 		StatePath: filepath.Join(en.root, "cf.json"),
 		TrashDir:  filepath.Join(en.root, "trash"),
@@ -125,17 +127,19 @@ func TestExplorerFolder(t *testing.T) {
 	}
 
 	// Delete and rename: orOS follows before Windows carries them out.
+	t.Log(time.Now().Format("15:04:05.000"), "removing new.txt")
 	if err := os.Remove(filepath.Join(dir, "Docs", "new.txt")); err != nil {
 		t.Fatal(err)
 	}
+	t.Log(time.Now().Format("15:04:05.000"), "removed")
 	if _, ok := en.vault()["Docs/new.txt"]; ok {
-		t.Fatal("deleted file still in orOS")
+		t.Error("deleted file still in orOS")
 	}
 	if err := os.Rename(filepath.Join(dir, "Docs", "sub"), filepath.Join(dir, "Moved")); err != nil {
 		t.Fatal(err)
 	}
 	if v := en.vault(); v["Moved/b.txt"] != "beta" {
-		t.Fatal(v)
+		t.Error("rename not in orOS", v)
 	}
 
 	// Changes in orOS reach the folder.

@@ -918,6 +918,22 @@ func (s *Server) fill(id string, key, transfer, request, size, off, length int64
 	}
 }
 
+// Debug, when set, gets every callback (tests).
+var Debug func(msg string)
+
+func (s *Server) debug(what string, p *uint16, detail string) {
+	if Debug != nil {
+		Debug(what + " " + ptrString(p) + " (root " + s.norm + ") " + detail)
+	}
+}
+
+func ptrString(p *uint16) string {
+	if p == nil {
+		return "<nil>"
+	}
+	return windows.UTF16PtrToString(p)
+}
+
 func onCancel(info *cfCallbackInfo, p uintptr) uintptr { return 0 }
 
 func onDelete(info *cfCallbackInfo, p *deleteParams) uintptr {
@@ -928,6 +944,7 @@ func onDelete(info *cfCallbackInfo, p *deleteParams) uintptr {
 	rel, in := s.rel(info.NormalizedPath)
 	key, transfer, request := info.ConnectionKey, info.TransferKey, info.RequestKey
 	undelete := p.Flags&deleteUndelete != 0
+	s.debug("delete callback", info.NormalizedPath, fmt.Sprintf("rel=%q in=%v flags=%d", rel, in, p.Flags))
 	go func() {
 		var err error
 		if _, ours := s.w.quiet.Load(rel); in && rel != "" && !undelete && !ours {
@@ -953,6 +970,7 @@ func onRename(info *cfCallbackInfo, p *renameParams) uintptr {
 	}
 	from, fromIn := s.rel(info.NormalizedPath)
 	to, toIn := s.rel(p.TargetPath)
+	s.debug("rename callback", info.NormalizedPath, fmt.Sprintf("from=%q to=%q flags=%d target=%s", from, to, p.Flags, ptrString(p.TargetPath)))
 	fromIn = fromIn && p.Flags&renameSourceIn != 0 && from != ""
 	toIn = toIn && p.Flags&renameTargetIn != 0 && to != ""
 	key, transfer, request := info.ConnectionKey, info.TransferKey, info.RequestKey
