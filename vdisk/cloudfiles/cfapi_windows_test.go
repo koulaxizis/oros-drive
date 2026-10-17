@@ -4,6 +4,7 @@ package cloudfiles
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,6 +42,15 @@ func listDir(t *testing.T, dir string) string {
 	}
 	sort.Strings(out)
 	return strings.Join(out, " ")
+}
+
+// cmd runs a cmd.exe built-in, as another program would.
+func cmd(t *testing.T, args ...string) {
+	t.Helper()
+	out, err := exec.Command("cmd", append([]string{"/c"}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v: %v %s", args, err, out)
+	}
 }
 
 // A real sync root in a temp folder: Explorer's view of the disk.
@@ -126,18 +136,14 @@ func TestExplorerFolder(t *testing.T) {
 		t.Fatalf("folder not a placeholder: %+v", e)
 	}
 
-	// Delete and rename: orOS follows before Windows carries them out.
-	t.Log(time.Now().Format("15:04:05.000"), "removing new.txt")
-	if err := os.Remove(filepath.Join(dir, "Docs", "new.txt")); err != nil {
-		t.Fatal(err)
-	}
-	t.Log(time.Now().Format("15:04:05.000"), "removed")
+	// Delete and rename in another program (Windows does not call the
+	// provider for its own changes): orOS follows before Windows
+	// carries them out.
+	cmd(t, "del", filepath.Join(dir, "Docs", "new.txt"))
 	if _, ok := en.vault()["Docs/new.txt"]; ok {
 		t.Error("deleted file still in orOS")
 	}
-	if err := os.Rename(filepath.Join(dir, "Docs", "sub"), filepath.Join(dir, "Moved")); err != nil {
-		t.Fatal(err)
-	}
+	cmd(t, "move", filepath.Join(dir, "Docs", "sub"), filepath.Join(dir, "Moved"))
 	if v := en.vault(); v["Moved/b.txt"] != "beta" {
 		t.Error("rename not in orOS", v)
 	}
