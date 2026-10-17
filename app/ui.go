@@ -283,6 +283,12 @@ func (u *UI) Handler() http.Handler {
 			os.MkdirAll(d, 0o700)
 			return nil, Open(d)
 		}
+		if in.What == "disk" {
+			if m := u.S.Status().Mount; m.Mounted {
+				return nil, Open(m.Path)
+			}
+			return nil, errors.New("not shown")
+		}
 		return nil, errors.New("unknown")
 	})
 	api("/api/browse", "GET", func(r *http.Request) (any, error) { return browse(r.URL.Query().Get("path")) })

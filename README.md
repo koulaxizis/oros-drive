@@ -2,7 +2,7 @@
 
 Mirror chosen folders of your computer or phone into the encrypted [orOS](https://useoros.online) Vault, and later see the orOS disk as a drive. The Vault lives in your own Dropbox, end-to-end encrypted: Dropbox sees neither file names nor contents. Windows, Linux and Android. MIT, free forever.
 
-**Status: wave 3 of 7.** The desktop app mirrors folders both ways between Windows or Linux and the Vault. orOS shows them in Files › orOS Drive and downloads a file only when you open it (once orOS's on-demand Drive update, oros PR #438, is live).
+**Status: wave 5 of 7.** The desktop app mirrors folders both ways between Windows or Linux and the Vault, and the orOS Android app mirrors phone folders (wave 4). orOS shows them in Files › orOS Drive and downloads a file only when you open it. On Linux the whole orOS disk can also appear as a folder, and on Android as "orOS" in the Files app (wave 5).
 
 ## The app
 
@@ -25,6 +25,10 @@ The app then lives in the tray (on GNOME the tray needs the AppIndicator extensi
 - Files bigger than 500 MB (adjustable) stay on this computer and are listed. Lock and temp files (`~$*.docx`, `*.part`, `*.tmp`, `Thumbs.db`, `.DS_Store`) are never mirrored. Names Windows cannot hold (`a:b.txt`) stay in orOS and are listed.
 - A file that changed in the last 3 seconds waits for the next pass, and a local change made while syncing always wins.
 
+### The orOS disk as a folder (Linux)
+
+Settings › "The orOS disk as a folder" (or `orosdrive mount`) shows the whole orOS disk at `~/orOS` while the app runs. Files download when a program opens them and upload when it saves them; what you opened stays in a cache (2 GB, the oldest copies go first). Saving works like anywhere else: programs that write a temp file and rename it over the original (office suites, editors) are fine, and their lock and temp files stay on this computer. A file changed in orOS while you had it open is kept beside yours as a conflict copy; a folder you delete keeps any file someone else changed meanwhile. Needs FUSE (`fuse3`, present on most desktops). Empty folders you make here show on this computer until a file goes in them (the vault keeps files only).
+
 ## Command line
 
 ```
@@ -37,6 +41,7 @@ orosdrive folders | remove <name> | sync
 orosdrive status                  account and vault summary
 orosdrive ls [-l] [path]          list the orOS disk, e.g. `orosdrive ls -l Docs`
 orosdrive pull <path> <dir>       copy a file or folder out of the Vault
+orosdrive mount [<folder> | off]  show the whole orOS disk as a folder (Linux)
 orosdrive logout
 ```
 
@@ -61,6 +66,8 @@ orOS Drive implements the same format and the same rules (conditional writes on 
 | `vault/` | crypto, key file, manifest, download/upload, `DirStore` (a vault in a folder) |
 | `dropbox/` | Dropbox API v2: PKCE sign-in, refresh, conditional uploads, upload sessions, retries |
 | `mirror/` | the two-way mirror: scan, three-way merge per file, conflict copies, trash, safety limits |
+| `vdisk/` | the whole disk as a file system: on-demand downloads, cache, conflict-safe writes; `vdisk/fusefs` mounts it on Linux |
+| `mobile/` | the API the orOS Android app binds with gomobile (phone folders, the Files-app provider) |
 | `app/` | the desktop app: background loop, folder watcher, settings page (`app/web`), tray, autostart |
 | `internal/secret/` | keychain storage for the Dropbox sign-in and the vault key |
 | `internal/config/` | settings (`app.json`) and per-folder state |
@@ -81,9 +88,9 @@ CI runs both on every push, the interop job with `sync.js` and `vault.js` from o
 
 1. Core + compatibility proof (done)
 2. orOS: Drive folders load on demand in the browser, so phones don't fill up (done)
-3. Desktop mirror for Windows and Linux (this)
-4. Android mirror inside the orOS Android app
-5. Virtual drive on Linux (FUSE) and Android (Files app)
+3. Desktop mirror for Windows and Linux (done)
+4. Android mirror inside the orOS Android app (done)
+5. Virtual drive on Linux (FUSE) and Android (Files app) (this)
 6. Virtual drive on Windows (Explorer, Cloud Files API)
 7. Clean-up of unused objects, very large files
 

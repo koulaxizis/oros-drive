@@ -28,6 +28,10 @@ var T = {
     localOnly: "{n} files are bigger than the limit and stay only on this computer",
     skipped: "{n} files were skipped (names this system cannot hold, or unreadable)",
     open: "Open", remove: "Stop mirroring", removeAsk: "Stop mirroring this folder? Files stay here and in orOS.",
+    diskTitle: "The orOS disk as a folder",
+    diskText: "The whole orOS disk appears as a folder on this computer. Files download when you open them and upload when you save them; a copy of what you opened stays in a cache.",
+    diskOn: "Show the orOS disk", diskPath: "Folder (it must be empty)",
+    diskMounted: "Shown at {p}.", diskOff: "Off.", diskLocked: "Shown again once the vault is unlocked.",
     activity: "Activity",
     ev: { upload: "Uploaded", download: "Downloaded", "delete-local": "Moved to trash", "delete-remote": "Deleted in orOS", "conflict-copy": "Conflict copy", error: "Error" },
     settings: "Settings", device: "This computer's name in orOS", maxFile: "Largest file to upload (MB)",
@@ -66,6 +70,10 @@ var T = {
     localOnly: "{n} αρχεία είναι μεγαλύτερα από το όριο και μένουν μόνο σε αυτόν τον υπολογιστή",
     skipped: "{n} αρχεία παραλείφθηκαν (ονόματα που δεν χωράνε σε αυτό το σύστημα ή αρχεία που δεν διαβάζονται)",
     open: "Άνοιγμα", remove: "Τέλος mirror", removeAsk: "Να σταματήσει το mirror αυτού του φακέλου; Τα αρχεία μένουν εδώ και στο orOS.",
+    diskTitle: "Ο δίσκος του orOS ως φάκελος",
+    diskText: "Όλος ο δίσκος του orOS εμφανίζεται ως φάκελος σε αυτόν τον υπολογιστή. Τα αρχεία κατεβαίνουν όταν τα ανοίγεις και ανεβαίνουν όταν τα αποθηκεύεις· ένα αντίγραφο όσων άνοιξες μένει στην cache.",
+    diskOn: "Εμφάνιση του δίσκου του orOS", diskPath: "Φάκελος (πρέπει να είναι άδειος)",
+    diskMounted: "Εμφανίζεται στο {p}.", diskOff: "Ανενεργό.", diskLocked: "Θα εμφανιστεί ξανά μόλις ξεκλειδωθεί το vault.",
     activity: "Δραστηριότητα",
     ev: { upload: "Ανέβηκε", download: "Κατέβηκε", "delete-local": "Στον κάδο", "delete-remote": "Σβήστηκε στο orOS", "conflict-copy": "Αντίγραφο σύγκρουσης", error: "Σφάλμα" },
     settings: "Ρυθμίσεις", device: "Όνομα αυτού του υπολογιστή στο orOS", maxFile: "Μεγαλύτερο αρχείο για ανέβασμα (MB)",
@@ -157,7 +165,24 @@ function render() {
     $("p-autostart").checked = !!s.autostart;
   }
   $("p-device").disabled = (s.settings.folders || []).length > 0;
+  renderDisk();
   $("about").textContent = t("about", { v: s.version, w: s.secretsIn === "keychain" ? t("whereKeychain") : t("whereFile") });
+}
+
+var editingDisk = false;
+
+function renderDisk() {
+  var m = state.mount || {};
+  $("sec-disk").hidden = !m.supported || !state.signedIn;
+  if (!editingDisk) {
+    $("d-on").checked = !!state.settings.mount;
+    $("d-path").value = state.settings.mount || m.default || "";
+  }
+  $("btn-disk-open").hidden = !m.mounted;
+  if (m.error) msg("disk-msg", m.error, true);
+  else if (m.mounted) msg("disk-msg", t("diskMounted", { p: m.path }));
+  else if (state.settings.mount && !state.unlocked) msg("disk-msg", t("diskLocked"));
+  else msg("disk-msg", state.settings.mount ? "" : t("diskOff"));
 }
 
 function list(title, items) {
@@ -306,6 +331,15 @@ document.addEventListener("DOMContentLoaded", function () {
     api("prefs", body).then(function () { editingPrefs = false; msg("prefs-msg", t("saved")); refresh(); })
       .catch(function (e) { msg("prefs-msg", e.message, true); });
   };
+  var disk = $("form-disk");
+  disk.addEventListener("focusin", function () { editingDisk = true; });
+  $("d-on").addEventListener("change", function () { editingDisk = true; });
+  disk.onsubmit = function (ev) {
+    ev.preventDefault();
+    api("prefs", { mount: $("d-on").checked ? $("d-path").value : "" }).then(function () { editingDisk = false; refresh(); })
+      .catch(function (e) { msg("disk-msg", e.message, true); });
+  };
+  $("btn-disk-open").onclick = function () { api("open", { what: "disk" }); };
   $("btn-oros").onclick = function () { api("open", { what: "oros" }); };
   $("btn-trash").onclick = function () { api("open", { what: "trash" }); };
   $("btn-lock").onclick = function () { if (confirm(t("lockAsk"))) api("lock", {}).then(refresh); };

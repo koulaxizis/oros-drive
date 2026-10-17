@@ -48,6 +48,7 @@ func cmdRun(args []string) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer s.Shutdown() // unmount the orOS disk folder
 	var quit func()
 	ui, err := app.StartUI(s, func() { quit() })
 	if err != nil {
@@ -288,6 +289,48 @@ func cmdSync() error {
 	if r := st.Last; r != nil {
 		fmt.Printf("up %d, down %d, deleted here %d, deleted in orOS %d, conflicts %d, failed %d\n",
 			r.Uploaded, r.Downloaded, r.DeletedLocal, r.DeletedRemote, r.Conflicts, r.Failed)
+	}
+	return nil
+}
+
+func cmdMount(args []string) error {
+	if len(args) > 1 {
+		return errors.New("usage: orosdrive mount [<folder> | off]")
+	}
+	target := ""
+	if len(args) == 0 || args[0] != "off" {
+		if len(args) == 1 {
+			target = args[0]
+		} else if h, err := os.UserHomeDir(); err == nil {
+			target = filepath.Join(h, "orOS")
+		}
+		abs, err := filepath.Abs(target)
+		if err != nil {
+			return err
+		}
+		target = abs
+	}
+	prefs := app.Prefs{Mount: &target}
+	if _, running, err := call("prefs", prefs); running {
+		if err != nil {
+			return err
+		}
+	} else {
+		s, err := app.NewService(version)
+		if err != nil {
+			return err
+		}
+		if err := s.SetPrefs(prefs); err != nil {
+			return err
+		}
+	}
+	switch {
+	case target == "":
+		fmt.Println("The orOS disk is no longer shown as a folder.")
+	case app.Running() == "":
+		fmt.Printf("The orOS disk will be shown at %s when orOS Drive runs (orosdrive run).\n", target)
+	default:
+		fmt.Printf("The orOS disk is shown at %s (files download when opened).\n", target)
 	}
 	return nil
 }

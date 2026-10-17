@@ -45,6 +45,9 @@ Usage:
   orosdrive ls [-l] [path]       list files in the orOS disk (path like Docs/Work)
   orosdrive pull [--force] <path> <folder>
                                  copy a file or folder of the orOS disk into <folder>
+  orosdrive mount [<folder> | off]
+                                 show the whole orOS disk as <folder> while the app
+                                 runs (Linux; default ~/orOS)
   orosdrive version
 
 The orOS sync passphrase is asked for when needed (or read from
@@ -85,6 +88,8 @@ func main() {
 		err = cmdLs(args)
 	case "pull":
 		err = cmdPull(args)
+	case "mount":
+		err = cmdMount(args)
 	case "version", "--version", "-v":
 		fmt.Println("orosdrive", version)
 	case "help", "--help", "-h":

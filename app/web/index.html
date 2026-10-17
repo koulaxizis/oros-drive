@@ -56,6 +56,20 @@
     </form>
   </section>
 
+  <section id="sec-disk" class="card" hidden>
+    <h2 data-t="diskTitle"></h2>
+    <p class="note" data-t="diskText"></p>
+    <form id="form-disk" class="prefs">
+      <label class="check"><input id="d-on" type="checkbox"><span data-t="diskOn"></span></label>
+      <label><span data-t="diskPath"></span><input id="d-path"></label>
+      <div class="row wrap">
+        <button class="btn primary" data-t="save"></button>
+        <button type="button" id="btn-disk-open" class="btn" data-t="open"></button>
+      </div>
+      <p id="disk-msg" class="note"></p>
+    </form>
+  </section>
+
   <section id="sec-activity" class="card" hidden>
     <h2 data-t="activity"></h2>
     <ul id="events" class="events"></ul>

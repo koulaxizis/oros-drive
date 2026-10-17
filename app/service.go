@@ -21,6 +21,7 @@ import (
 	"github.com/koulaxizis/oros-drive/internal/secret"
 	"github.com/koulaxizis/oros-drive/mirror"
 	"github.com/koulaxizis/oros-drive/vault"
+	"github.com/koulaxizis/oros-drive/vdisk"
 )
 
 // OrosURL opens orOS in the browser.
@@ -43,6 +44,7 @@ type Status struct {
 	Login     string                `json:"login,omitempty"` // the sign-in in progress: "waiting" or an error
 	Version   string                `json:"version"`
 	Folders   map[string]FolderInfo `json:"folders"`
+	Mount     MountInfo             `json:"mount"`
 }
 
 // FolderInfo is a folder's last known state.
@@ -76,6 +78,9 @@ type Service struct {
 	approve  map[string]bool
 	folders  map[string]mirror.FolderStatus
 	lastRev  string
+	disk     *vdisk.Disk
+	diskKey  *secret.VaultKey
+	mnt      mountState
 
 	kick     chan struct{}
 	changed  chan struct{} // settings changed: rebuild the watcher
@@ -163,6 +168,7 @@ func (s *Service) Status() Status {
 		Events: append([]mirror.Event{}, s.events...), Settings: *s.settings,
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
+		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
 	}
 	st.Settings.Folders = append([]mirror.Pair{}, s.settings.Folders...)
 	for id, f := range s.folders {
@@ -483,6 +489,7 @@ type Prefs struct {
 	MaxDeletes *int    `json:"maxDeletes,omitempty"`
 	Lang       *string `json:"lang,omitempty"`
 	Autostart  *bool   `json:"autostart,omitempty"`
+	Mount      *string `json:"mount,omitempty"` // "" = off
 }
 
 // SetPrefs applies changed settings. The device name can change only
@@ -519,6 +526,19 @@ func (s *Service) SetPrefs(p Prefs) error {
 		case "", "en", "el":
 			s.settings.Lang = *p.Lang
 		}
+	}
+	if p.Mount != nil {
+		m := strings.TrimSpace(*p.Mount)
+		if m != "" {
+			if !mountSupported {
+				return errors.New("not available on this system yet")
+			}
+			if !filepath.IsAbs(m) {
+				return errors.New("choose a full folder path")
+			}
+			m = filepath.Clean(m)
+		}
+		s.settings.Mount = m
 	}
 	if p.Autostart != nil {
 		if err := SetAutostart(*p.Autostart); err != nil {
@@ -675,10 +695,13 @@ func (s *Service) Run(ctx context.Context) {
 	purge := time.NewTicker(24 * time.Hour)
 	defer purge.Stop()
 	s.purgeTrash()
+	s.syncMount()
+	defer s.unmount()
 
 	var retry <-chan time.Time
 	fail := 0
 	run := func() {
+		s.syncMount() // after an unlock or a lock
 		busy, err := s.SyncOnce()
 		retry = nil
 		switch {
@@ -703,11 +726,13 @@ func (s *Service) Run(ctx context.Context) {
 		case <-s.changed:
 			w.Close()
 			w = newWatcher(s.pairs())
+			s.syncMount()
 		case <-w.Events():
 			run()
 		case <-retry:
 			run()
 		case <-poll.C:
+			s.syncMount()
 			if s.remoteMoved() {
 				run()
 			}

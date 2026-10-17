@@ -7,6 +7,7 @@ toolchain go1.24.7
 require (
 	fyne.io/systray v1.11.0
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/mobile v0.0.0-20260209203831-923679eb55af
 	golang.org/x/sys v0.41.0

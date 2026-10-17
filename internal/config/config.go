@@ -34,6 +34,7 @@ type Settings struct {
 	MaxDeletes  int           `json:"maxDeletes,omitempty"` // 0 = 50
 	Lang        string        `json:"lang,omitempty"`       // "en", "el" or "" (from the system)
 	NoAutostart bool          `json:"noAutostart,omitempty"`
+	Mount       string        `json:"mount,omitempty"` // folder showing the whole orOS disk (Linux); "" = off
 }
 
 func settingsFile() (string, error) {
@@ -87,9 +88,12 @@ func (s *Settings) Save() error {
 	return os.Rename(tmp, p)
 }
 
-// StateDir and TrashDir sit beside app.json.
+// StateDir, TrashDir and CacheDir sit beside app.json.
 func StateDir() (string, error) { return sub("state") }
 func TrashDir() (string, error) { return sub("Trash") }
+
+// CacheDir holds the orOS disk's downloaded files (the mounted folder).
+func CacheDir() (string, error) { return sub("cache") }
 
 func sub(name string) (string, error) {
 	d, err := Dir()
