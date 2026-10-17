@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           fltmc filters
-          go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/
+          go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/ ./app/
       - name: Smoke test of the real app
         shell: bash
         run: |
