@@ -25,6 +25,14 @@ jobs:
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - run: go vet ./...
       - run: go test -race ./...
+      # The orOS disk in Explorer against the real Cloud Files driver
+      # (wave 6); verbose, so a skip shows why.
+      - name: Cloud Files test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          fltmc filters
+          go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/
       - name: Smoke test of the real app
         shell: bash
         run: |

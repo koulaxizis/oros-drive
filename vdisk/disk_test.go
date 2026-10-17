@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -448,5 +449,46 @@ func TestTempFilesStayLocal(t *testing.T) {
 	}
 	if ents, _ := os.ReadDir(filepath.Join(d.CacheDir, "scratch")); len(ents) != 0 {
 		t.Fatalf("%d scratch files left", len(ents))
+	}
+}
+
+func TestTreeAndFetchHash(t *testing.T) {
+	e := newEnv(t)
+	d := e.disk("pc")
+	if tree, exists, err := d.Tree(true); err != nil || exists || len(tree) != 0 {
+		t.Fatalf("%v %v %v", tree, exists, err)
+	}
+	e.browser(map[string]string{"/internal/Docs/sub/b.txt": "beta", "/internal/c.md": "c"})
+	if err := d.Mkdir("Empty/inner"); err != nil {
+		t.Fatal(err)
+	}
+	tree, exists, err := d.Tree(true)
+	if err != nil || !exists {
+		t.Fatal(err)
+	}
+	var got []string
+	for p, i := range tree {
+		if i.Dir {
+			p += "/"
+		}
+		got = append(got, p)
+	}
+	sort.Strings(got)
+	want := "/internal/Docs/ /internal/Docs/sub/ /internal/Docs/sub/b.txt /internal/Empty/ /internal/Empty/inner/ /internal/c.md"
+	if strings.Join(got, " ") != want {
+		t.Fatal(got)
+	}
+	h := tree["/internal/Docs/sub/b.txt"].Hash
+	// By content, also after the file moved elsewhere.
+	e.browser(map[string]string{"/internal/Moved.txt": "beta"}, "/internal/Docs/sub/b.txt")
+	local, err := d.FetchHash(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(local); string(b) != "beta" {
+		t.Fatal(string(b))
+	}
+	if _, err := d.FetchHash(strings.Repeat("0", 64)); !errors.Is(err, ErrNotExist) {
+		t.Fatal(err)
 	}
 }

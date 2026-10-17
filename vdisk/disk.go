@@ -333,6 +333,78 @@ func (d *Disk) List(dir string) ([]Info, error) {
 	return out, nil
 }
 
+// Tree returns every file and folder on the disk (not the root and
+// not this device's temp files), keyed by disk path, and whether the
+// vault has a manifest at all (false: an empty or reset vault, where
+// VD-1 says nothing may be deleted). force reads the manifest again.
+func (d *Disk) Tree(force bool) (map[string]Info, bool, error) {
+	if err := d.Refresh(force); err != nil {
+		return nil, false, err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	r := d.remote
+	out := make(map[string]Info, len(r.Files))
+	addDirs := func(p string) {
+		for dir := path.Dir(p); dir != Root && dir != "/" && dir != "."; dir = path.Dir(dir) {
+			if _, ok := out[dir]; ok {
+				break
+			}
+			out[dir] = Info{Path: dir, Name: path.Base(dir), Dir: true}
+		}
+	}
+	for p, e := range r.Files {
+		out[p] = d.info(p, e)
+		addDirs(p)
+	}
+	for p := range d.dirs {
+		if _, ok := out[p]; !ok {
+			out[p] = Info{Path: p, Name: path.Base(p), Dir: true}
+		}
+		addDirs(p)
+	}
+	return out, r.Exists, nil
+}
+
+// FetchHash is Fetch by content: the cached copy of hash, or the
+// download of any file in the manifest with that content. A program
+// that opens a file Windows still shows under an older name (renamed
+// here or elsewhere) gets exactly the content it was listed with.
+func (d *Disk) FetchHash(hash string) (string, error) {
+	if hash == "" {
+		return "", ErrNotExist
+	}
+	if d.cached(hash) {
+		local := d.objPath(hash)
+		now := d.clock()
+		_ = os.Chtimes(local, now, now)
+		return local, nil
+	}
+	for try := 0; try < 2; try++ {
+		r, err := d.snapshot()
+		if err != nil {
+			return "", err
+		}
+		d.mu.Lock()
+		var found *vault.Entry
+		for _, e := range r.Files {
+			if e.H == hash {
+				e := e
+				found = &e
+				break
+			}
+		}
+		d.mu.Unlock()
+		if found != nil {
+			return d.fetchEntry(*found)
+		}
+		if err := d.Refresh(true); err != nil {
+			return "", err
+		}
+	}
+	return "", ErrNotExist
+}
+
 // ---------- cache ----------
 
 func (d *Disk) objPath(hash string) string { return filepath.Join(d.CacheDir, "objects", hash) }
