@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - run: go test -race ./...
+      # The orOS disk in Explorer against the real Cloud Files driver
+      # (wave 6); verbose, so a skip shows why.
+      - name: Cloud Files test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          fltmc filters
+          go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/ ./app/
+      - name: Smoke test of the real app
+        shell: bash
+        run: |
+          go build -o smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/orosdrive
+          packaging/smoke.sh smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  # The Go code against the real browser code: sync.js + vault.js from
+  # koulaxizis/oros main, run in Node. Fails on any format drift.
+  interop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: koulaxizis/oros
+          ref: main
+          path: oros-src
+          sparse-checkout: |
+            sync.js
+            vault.js
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: go test -count=1 -v ./interop/
+        env:
+          OROS_SRC: ${{ github.workspace }}/oros-src
+
+  build:
+    needs: [test, interop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build release files
+        run: packaging/package.sh "0.3.0-$(git rev-parse --short HEAD)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orosdrive
+          path: out/
+
+  # The Android library the orOS Android app embeds (wave 4): proves
+  # mobile/ binds with gomobile. koulaxizis/oros android.yml runs the
+  # same command on a pinned commit of this repo.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: gomobile bind
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          mkdir -p out
+          gomobile bind -target=android -androidapi 24 -javapkg online.useoros.drive -o out/orosdrive.aar ./mobile
+          unzip -l out/orosdrive.aar | grep -E 'classes.jar|libgojni.so'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orosdrive-aar
+          path: out/orosdrive.aar

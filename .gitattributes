@@ -1,0 +1,2 @@
+# Golden vaults and their plain files must stay byte for byte (no CRLF on Windows).
+vault/testdata/** -text
