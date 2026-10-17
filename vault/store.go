@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ErrConflict is a refused conditional write (sync.js "storage-conflict").
@@ -45,6 +46,21 @@ type Store interface {
 	Delete(key string) error
 	// List returns every key under prefix ("" = all), lower-cased like Dropbox.
 	List(prefix string) ([]string, error)
+}
+
+// ObjectInfo is one stored key with its size and the time the provider
+// stored it (Dropbox server_modified: re-uploading identical content
+// does not move it).
+type ObjectInfo struct {
+	Key      string
+	Size     int64
+	Modified time.Time
+}
+
+// Inventory is a Store that can also list sizes and times (clean-up
+// and the usage view need them; both stores here have it).
+type Inventory interface {
+	ListInfo(prefix string) ([]ObjectInfo, error)
 }
 
 // DirStore keeps a vault in a local folder: one file per key, its
@@ -149,9 +165,19 @@ func (d *DirStore) Delete(key string) error {
 }
 
 func (d *DirStore) List(prefix string) ([]string, error) {
+	infos, err := d.ListInfo(prefix)
+	out := make([]string, len(infos))
+	for i, o := range infos {
+		out[i] = o.Key
+	}
+	return out, err
+}
+
+// ListInfo: the file's modification time stands for server_modified.
+func (d *DirStore) ListInfo(prefix string) ([]ObjectInfo, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var out []string
+	var out []ObjectInfo
 	err := filepath.WalkDir(d.Root, func(p string, e os.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -165,10 +191,14 @@ func (d *DirStore) List(prefix string) ([]string, error) {
 		rel, _ := filepath.Rel(d.Root, p)
 		k := strings.ToLower(filepath.ToSlash(rel))
 		if strings.HasPrefix(k, strings.ToLower(prefix)) {
-			out = append(out, k)
+			fi, err := e.Info()
+			if err != nil {
+				return err
+			}
+			out = append(out, ObjectInfo{Key: k, Size: fi.Size(), Modified: fi.ModTime()})
 		}
 		return nil
 	})
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out, err
 }

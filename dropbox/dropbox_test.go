@@ -167,12 +167,13 @@ func (f *fakeDropbox) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Sscan(c, &start)
 		}
 		end := min(start+2, len(keys)) // tiny pages: pagination is exercised
-		var entries []map[string]string
+		var entries []map[string]any
 		if start == 0 {
-			entries = append(entries, map[string]string{".tag": "folder", "path_lower": "/vault/objects"})
+			entries = append(entries, map[string]any{".tag": "folder", "path_lower": "/vault/objects"})
 		}
 		for _, k := range keys[start:end] {
-			entries = append(entries, map[string]string{".tag": "file", "path_lower": k})
+			entries = append(entries, map[string]any{".tag": "file", "path_lower": k,
+				"size": len(f.files[k].data), "server_modified": "2026-09-01T10:20:30Z"})
 		}
 		jsonOut(w, 200, map[string]any{"entries": entries, "has_more": end < len(keys), "cursor": fmt.Sprint(end)})
 	case "users/get_current_account":
@@ -329,6 +330,11 @@ func TestListPaginatesAndSkipsFolders(t *testing.T) {
 	objs, _ := c.List("objects/")
 	if strings.Join(objs, ",") != "objects/aa,objects/bb,objects/cc" {
 		t.Fatalf("%v", objs)
+	}
+	infos, err := c.ListInfo("objects/")
+	if err != nil || len(infos) != 3 || infos[0].Key != "objects/aa" || infos[0].Size != 10 ||
+		!infos[0].Modified.Equal(time.Date(2026, 9, 1, 10, 20, 30, 0, time.UTC)) {
+		t.Fatalf("%+v %v", infos, err)
 	}
 }
 

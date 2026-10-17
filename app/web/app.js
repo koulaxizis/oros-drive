@@ -32,6 +32,16 @@ var T = {
     diskText: "The whole orOS disk appears as a folder on this computer. Files download when you open them and upload when you save them; a copy of what you opened stays in a cache.",
     diskOn: "Show the orOS disk", diskPath: "Folder (it must be empty)",
     diskMounted: "Shown at {p}.", diskOff: "Off.", diskLocked: "Shown again once the vault is unlocked.",
+    spaceTitle: "Space in Dropbox",
+    spaceText: "Files are stored encrypted. Deleted and replaced files leave content behind that no file uses; after 30 days it can be removed.",
+    spaceShow: "Show space use", spaceWait: "Counting…",
+    spFiles: "{f} in orOS, {s}", spStored: "Stored in Dropbox (encrypted): {s} in {n} pieces",
+    spUnused: "No longer used: {s}", spFree: "Unused for more than 30 days, can be removed: {s}",
+    spMissing: "{n} files have no stored content and cannot be opened on any device",
+    spNoManifest: "Nothing is synced yet, so nothing is removed.",
+    spMismatch: "The stored content does not match the list of files, so nothing is removed. Check that orOS syncs normally.",
+    cleanBtn: "Free up {s}", cleanAsk: "Remove {n} pieces of content that no file has used for 30 days? This cannot be undone; your files stay.",
+    cleaned: "Removed {n} pieces, {s} freed.",
     activity: "Activity",
     ev: { upload: "Uploaded", download: "Downloaded", "delete-local": "Moved to trash", "delete-remote": "Deleted in orOS", "conflict-copy": "Conflict copy", error: "Error" },
     settings: "Settings", device: "This computer's name in orOS", maxFile: "Largest file to upload (MB)",
@@ -74,6 +84,16 @@ var T = {
     diskText: "Όλος ο δίσκος του orOS εμφανίζεται ως φάκελος σε αυτόν τον υπολογιστή. Τα αρχεία κατεβαίνουν όταν τα ανοίγεις και ανεβαίνουν όταν τα αποθηκεύεις· ένα αντίγραφο όσων άνοιξες μένει στην cache.",
     diskOn: "Εμφάνιση του δίσκου του orOS", diskPath: "Φάκελος (πρέπει να είναι άδειος)",
     diskMounted: "Εμφανίζεται στο {p}.", diskOff: "Ανενεργό.", diskLocked: "Θα εμφανιστεί ξανά μόλις ξεκλειδωθεί το vault.",
+    spaceTitle: "Χώρος στο Dropbox",
+    spaceText: "Τα αρχεία αποθηκεύονται κρυπτογραφημένα. Όσα σβήστηκαν ή αντικαταστάθηκαν αφήνουν περιεχόμενο που δεν χρησιμοποιεί κανένα αρχείο· μετά από 30 ημέρες μπορεί να αφαιρεθεί.",
+    spaceShow: "Εμφάνιση χώρου", spaceWait: "Μετράει…",
+    spFiles: "{f} στο orOS, {s}", spStored: "Αποθηκευμένα στο Dropbox (κρυπτογραφημένα): {s} σε {n} κομμάτια",
+    spUnused: "Δεν χρησιμοποιούνται πια: {s}", spFree: "Αχρησιμοποίητα πάνω από 30 ημέρες, μπορούν να αφαιρεθούν: {s}",
+    spMissing: "{n} αρχεία δεν έχουν αποθηκευμένο περιεχόμενο και δεν ανοίγουν σε καμία συσκευή",
+    spNoManifest: "Δεν έχει συγχρονιστεί τίποτα ακόμα, οπότε δεν αφαιρείται τίποτα.",
+    spMismatch: "Το αποθηκευμένο περιεχόμενο δεν ταιριάζει με τη λίστα των αρχείων, οπότε δεν αφαιρείται τίποτα. Έλεγξε ότι το orOS συγχρονίζει κανονικά.",
+    cleanBtn: "Απελευθέρωση {s}", cleanAsk: "Να αφαιρεθούν {n} κομμάτια περιεχομένου που δεν χρησιμοποιεί κανένα αρχείο εδώ και 30 ημέρες; Δεν αναιρείται· τα αρχεία σου μένουν.",
+    cleaned: "Αφαιρέθηκαν {n} κομμάτια, ελευθερώθηκαν {s}.",
     activity: "Δραστηριότητα",
     ev: { upload: "Ανέβηκε", download: "Κατέβηκε", "delete-local": "Στον κάδο", "delete-remote": "Σβήστηκε στο orOS", "conflict-copy": "Αντίγραφο σύγκρουσης", error: "Σφάλμα" },
     settings: "Ρυθμίσεις", device: "Όνομα αυτού του υπολογιστή στο orOS", maxFile: "Μεγαλύτερο αρχείο για ανέβασμα (MB)",
@@ -152,6 +172,7 @@ function render() {
   var ready = s.signedIn && s.unlocked;
   $("sec-folders").hidden = !ready;
   $("sec-activity").hidden = !ready || !s.events.length;
+  $("sec-space").hidden = !ready;
   $("btn-lock").hidden = !s.unlocked;
   $("btn-logout").hidden = !s.signedIn;
   $("folders-intro").textContent = t("foldersIntro", { device: s.settings.device });
@@ -183,6 +204,34 @@ function renderDisk() {
   else if (m.mounted) msg("disk-msg", t("diskMounted", { p: m.path }));
   else if (state.settings.mount && !state.unlocked) msg("disk-msg", t("diskLocked"));
   else msg("disk-msg", state.settings.mount ? "" : t("diskOff"));
+}
+
+function size(n) {
+  var u = ["B", "KB", "MB", "GB", "TB"], i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i];
+}
+
+var usage = null;
+
+function showUsage() {
+  msg("space-msg", t("spaceWait"));
+  return api("usage").then(function (u) {
+    usage = u;
+    msg("space-msg", "");
+    var ul = $("space-list"); ul.textContent = "";
+    function line(text) { ul.appendChild(el("li", "", text)); }
+    line(t("spFiles", { f: u.files === 1 ? t("file1") : t("files", { n: u.files }), s: size(u.fileBytes) }));
+    line(t("spStored", { n: u.objects, s: size(u.stored) }));
+    line(t("spUnused", { s: size(u.unusedBytes) }));
+    if (u.hold === "no-manifest") line(t("spNoManifest"));
+    else if (u.hold === "mismatch") line(t("spMismatch"));
+    else line(t("spFree", { s: size(u.freeBytes) }));
+    if (u.missing) line(t("spMissing", { n: u.missing }));
+    var b = $("btn-clean");
+    b.hidden = !u.free;
+    b.textContent = t("cleanBtn", { s: size(u.freeBytes) });
+  }).catch(function (e) { msg("space-msg", e.message, true); });
 }
 
 function list(title, items) {
@@ -338,6 +387,14 @@ document.addEventListener("DOMContentLoaded", function () {
     ev.preventDefault();
     api("prefs", { mount: $("d-on").checked ? $("d-path").value : "" }).then(function () { editingDisk = false; refresh(); })
       .catch(function (e) { msg("disk-msg", e.message, true); });
+  };
+  $("btn-space").onclick = showUsage;
+  $("btn-clean").onclick = function () {
+    if (!usage || !confirm(t("cleanAsk", { n: usage.free }))) return;
+    $("btn-clean").hidden = true;
+    api("cleanup", {}).then(function (r) {
+      return showUsage().then(function () { msg("space-msg", t("cleaned", { n: r.removed, s: size(r.bytes) })); });
+    }).catch(function (e) { msg("space-msg", e.message, true); });
   };
   $("btn-disk-open").onclick = function () { api("open", { what: "disk" }); };
   $("btn-oros").onclick = function () { api("open", { what: "oros" }); };

@@ -442,9 +442,22 @@ func (c *Client) Delete(key string) error {
 // List returns every file key under prefix, lower-cased (Dropbox
 // path_lower), relative to Root.
 func (c *Client) List(prefix string) ([]string, error) {
+	infos, err := c.ListInfo(prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(infos))
+	for i, o := range infos {
+		out[i] = o.Key
+	}
+	return out, nil
+}
+
+// ListInfo is List with each file's size and server_modified.
+func (c *Client) ListInfo(prefix string) ([]vault.ObjectInfo, error) {
 	base := strings.ToLower(c.path(prefix))
 	root := strings.ToLower(c.Root) + "/"
-	var out []string
+	var out []vault.ObjectInfo
 	res, err := c.rpc("files/list_folder", map[string]any{"path": c.Root, "recursive": true, "limit": 2000})
 	for {
 		if err != nil {
@@ -462,8 +475,10 @@ func (c *Client) List(prefix string) ([]string, error) {
 		}
 		var page struct {
 			Entries []struct {
-				Tag       string `json:".tag"`
-				PathLower string `json:"path_lower"`
+				Tag            string    `json:".tag"`
+				PathLower      string    `json:"path_lower"`
+				Size           int64     `json:"size"`
+				ServerModified time.Time `json:"server_modified"`
 			} `json:"entries"`
 			HasMore bool   `json:"has_more"`
 			Cursor  string `json:"cursor"`
@@ -475,7 +490,7 @@ func (c *Client) List(prefix string) ([]string, error) {
 		}
 		for _, e := range page.Entries {
 			if e.Tag == "file" && strings.HasPrefix(e.PathLower, base) && strings.HasPrefix(e.PathLower, root) {
-				out = append(out, strings.TrimPrefix(e.PathLower, root))
+				out = append(out, vault.ObjectInfo{Key: strings.TrimPrefix(e.PathLower, root), Size: e.Size, Modified: e.ServerModified})
 			}
 		}
 		if !page.HasMore || page.Cursor == "" {

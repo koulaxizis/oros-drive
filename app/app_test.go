@@ -216,3 +216,36 @@ func TestSyncOnceNeverOverlaps(t *testing.T) {
 		t.Fatalf("busy=%v err=%v", busy, err)
 	}
 }
+
+// The space view and the clean-up through the settings page.
+func TestUsageAndCleanUpFromThePage(t *testing.T) {
+	u, _ := uiFor(t)
+	if w := do(u, "POST", "/api/unlock", `{"passphrase":"p1","create":true}`, true, true, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	v := vault.New(u.S.Store, vault.NewPassphrase("p1"))
+	v.PutFiles(map[string]vault.File{"/internal/a.txt": {Data: []byte("one")}}, nil)
+	v.PutFiles(map[string]vault.File{"/internal/a.txt": {Data: []byte("two")}}, nil)
+	old := time.Now().Add(-vault.MinAge - time.Hour)
+	objs, _ := filepath.Glob(filepath.Join(os.Getenv("OROS_DRIVE_STORE_DIR"), "objects", "*"))
+	for _, p := range objs {
+		os.Chtimes(p, old, old)
+	}
+	var us vault.Usage
+	w := do(u, "GET", "/api/usage", "", true, false, "")
+	json.Unmarshal(w.Body.Bytes(), &us)
+	if w.Code != 200 || us.Files != 1 || us.Objects != 2 || us.Free != 1 {
+		t.Fatal(w.Body.String())
+	}
+	if w := do(u, "POST", "/api/cleanup", `{}`, true, false, ""); w.Code != 403 {
+		t.Fatal("clean-up without the header:", w.Code)
+	}
+	w = do(u, "POST", "/api/cleanup", `{}`, true, true, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"removed":1`) {
+		t.Fatal(w.Body.String())
+	}
+	r, _ := v.FetchManifest()
+	if b, err := v.Download(r.Files["/internal/a.txt"]); err != nil || string(b) != "two" {
+		t.Fatal(string(b), err)
+	}
+}

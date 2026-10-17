@@ -2,7 +2,7 @@
 
 Mirror chosen folders of your computer or phone into the encrypted [orOS](https://useoros.online) Vault, and later see the orOS disk as a drive. The Vault lives in your own Dropbox, end-to-end encrypted: Dropbox sees neither file names nor contents. Windows, Linux and Android. MIT, free forever.
 
-**Status: wave 6 of 7.** The desktop app mirrors folders both ways between Windows or Linux and the Vault, and the orOS Android app mirrors phone folders (wave 4). orOS shows them in Files › orOS Drive and downloads a file only when you open it. The whole orOS disk can also appear as a folder: on Linux (wave 5), in Windows Explorer (wave 6), and on Android as "orOS" in the Files app (wave 5).
+**Status: all 7 waves.** The desktop app mirrors folders both ways between Windows or Linux and the Vault, and the orOS Android app mirrors phone folders (wave 4). orOS shows them in Files › orOS Drive and downloads a file only when you open it. The whole orOS disk can also appear as a folder: on Linux (wave 5), in Windows Explorer (wave 6), and on Android as "orOS" in the Files app (wave 5). Settings › "Space in Dropbox" shows what the vault takes and removes content no file has used for 30 days (wave 7).
 
 ## The app
 
@@ -42,6 +42,7 @@ orosdrive status                  account and vault summary
 orosdrive ls [-l] [path]          list the orOS disk, e.g. `orosdrive ls -l Docs`
 orosdrive pull <path> <dir>       copy a file or folder out of the Vault
 orosdrive mount [<folder> | off]  show the whole orOS disk as a folder (Linux, Windows)
+orosdrive usage [--clean]         space in Dropbox; --clean removes content unused for 30 days
 orosdrive logout
 ```
 
@@ -58,6 +59,8 @@ orOS keeps your disk in `/vault` of its Dropbox app folder (the format is descri
 - `key.json`: one random 32-byte vault key, wrapped with your sync passphrase (PBKDF2-SHA-256, 600,000 rounds, AES-GCM). A passphrase change re-wraps it; the key itself stays.
 - `manifest.json`: AES-GCM sealed list of every file (path, SHA-256, size, date).
 - `objects/<HMAC>`: each file's content, sealed with the vault key, named by an HMAC of its hash so nobody can test whether a known file is stored.
+
+Deleted and replaced files leave their objects behind (orOS itself never removes them). The clean-up removes only objects under `objects/` that no manifest entry names (by either name an entry can have) and that Dropbox stored more than 30 days ago. It removes nothing without a manifest, nothing when fewer than nine in ten of the named objects are listed (a partial listing or a wrong key), and stops as soon as the manifest changes. It never runs on its own.
 
 orOS Drive implements the same format and the same rules (conditional writes on the manifest revision, a downloaded file must match its hash, an absent manifest deletes nothing), in Go:
 

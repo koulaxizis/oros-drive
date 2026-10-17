@@ -45,6 +45,8 @@ Usage:
   orosdrive ls [-l] [path]       list files in the orOS disk (path like Docs/Work)
   orosdrive pull [--force] <path> <folder>
                                  copy a file or folder of the orOS disk into <folder>
+  orosdrive usage [--clean]      space used in Dropbox; --clean removes content no
+                                 file has used for 30 days
   orosdrive mount [<folder> | off]
                                  show the whole orOS disk as <folder> while the app
                                  runs (Linux, Windows; default ~/orOS)
@@ -90,6 +92,8 @@ func main() {
 		err = cmdPull(args)
 	case "mount":
 		err = cmdMount(args)
+	case "usage":
+		err = cmdUsage(args)
 	case "version", "--version", "-v":
 		fmt.Println("orosdrive", version)
 	case "help", "--help", "-h":
@@ -288,6 +292,40 @@ func cmdStatus() error {
 		fmt.Printf("          %d files still in the old format (orOS converts them on its next sync)\n", legacy)
 	}
 	return nil
+}
+
+func cmdUsage(args []string) error {
+	fs := flag.NewFlagSet("usage", flag.ExitOnError)
+	clean := fs.Bool("clean", false, "remove content no file has used for 30 days")
+	fs.Parse(args)
+	v, _, err := openVault()
+	if err != nil {
+		return err
+	}
+	u, err := v.Usage(time.Now())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Files:    %d in orOS, %s\n", u.Files, human(u.FileBytes))
+	fmt.Printf("Stored:   %s in %d pieces (encrypted)\n", human(u.Stored), u.Objects)
+	fmt.Printf("Unused:   %s; removable now (unused for 30 days): %s\n", human(u.UnusedB), human(u.FreeB))
+	if u.Missing > 0 {
+		fmt.Printf("Missing:  %d files have no stored content\n", u.Missing)
+	}
+	switch u.Hold {
+	case "no-manifest":
+		fmt.Println("Nothing is synced yet, so nothing is removed.")
+		return nil
+	case "mismatch":
+		fmt.Println("The stored content does not match the list of files, so nothing is removed.")
+		return nil
+	}
+	if !*clean || u.Free == 0 {
+		return nil
+	}
+	n, b, err := v.CleanUp(time.Now())
+	fmt.Printf("Removed:  %d pieces, %s\n", n, human(b))
+	return err
 }
 
 func human(n int64) string {

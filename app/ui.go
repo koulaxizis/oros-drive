@@ -291,6 +291,14 @@ func (u *UI) Handler() http.Handler {
 		}
 		return nil, errors.New("unknown")
 	})
+	api("/api/usage", "GET", func(r *http.Request) (any, error) { return u.S.Usage() })
+	api("/api/cleanup", "POST", func(r *http.Request) (any, error) {
+		n, b, err := u.S.CleanUp()
+		if err != nil {
+			return nil, err
+		}
+		return map[string]int64{"removed": int64(n), "bytes": b}, nil
+	})
 	api("/api/browse", "GET", func(r *http.Request) (any, error) { return browse(r.URL.Query().Get("path")) })
 	api("/api/quit", "POST", func(r *http.Request) (any, error) {
 		if u.Quit != nil {
