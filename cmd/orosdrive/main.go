@@ -47,7 +47,7 @@ Usage:
                                  copy a file or folder of the orOS disk into <folder>
   orosdrive mount [<folder> | off]
                                  show the whole orOS disk as <folder> while the app
-                                 runs (Linux; default ~/orOS)
+                                 runs (Linux, Windows; default ~/orOS)
   orosdrive version
 
 The orOS sync passphrase is asked for when needed (or read from
