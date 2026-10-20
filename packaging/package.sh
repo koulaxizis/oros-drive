@@ -14,6 +14,9 @@ setup="$root/out-setup"
 rm -rf "$out" "$setup" && mkdir -p "$out" "$setup/files"
 cp "$root/packaging/windows/oros-drive.iss" "$root/packaging/windows/Greek.isl" "$root/packaging/windows/oros-drive.ico" "$setup/"
 cp "$root/LICENSE" "$setup/files/LICENSE.txt"
+"$root/packaging/notices.sh" > "$out/THIRD-PARTY-NOTICES.txt"
+notices="$out/THIRD-PARTY-NOTICES.txt"
+cp "$notices" "$setup/files/THIRD-PARTY-NOTICES.txt"
 echo "$v" > "$setup/VERSION"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -24,6 +27,7 @@ for arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ld" -o "$d/orosdrive.exe" "$root/cmd/orosdrive"
   CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ld -H=windowsgui" -o "$d/orOS Drive.exe" "$root/cmd/orosdrive"
   cp "$root/LICENSE" "$d/LICENSE.txt"
+  cp "$notices" "$d/THIRD-PARTY-NOTICES.txt"
   cat > "$d/README.txt" <<TXT
 orOS Drive $v
 
@@ -33,6 +37,7 @@ pick the folders to mirror. The app then lives in the tray (by the clock).
 
 orosdrive.exe is the same program for the terminal (orosdrive help).
 Free and open source (MIT): https://github.com/koulaxizis/oros-drive
+Third-party licences: THIRD-PARTY-NOTICES.txt
 TXT
   (cd "$d" && zip -q -9 "$out/orosdrive-$v-windows-$arch.zip" ./*)
   mkdir -p "$setup/files/$arch"
@@ -40,14 +45,19 @@ TXT
 
   d="$work/linux-$arch/orosdrive-$v"; mkdir -p "$d"
   CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "$ld" -o "$d/orosdrive" "$root/cmd/orosdrive"
-  cp "$root/LICENSE" "$root/packaging/oros-drive.desktop" "$root/packaging/oros-drive.png" "$d/"
+  cp "$root/LICENSE" "$notices" "$root/packaging/oros-drive.desktop" "$root/packaging/oros-drive.png" "$d/"
   tar -C "$work/linux-$arch" -czf "$out/orosdrive-$v-linux-$arch.tar.gz" "orosdrive-$v"
 
   p="$work/deb-$arch"
   install -Dm755 "$d/orosdrive" "$p/usr/bin/orosdrive"
   install -Dm644 "$root/packaging/oros-drive.desktop" "$p/usr/share/applications/oros-drive.desktop"
   install -Dm644 "$root/packaging/oros-drive.png" "$p/usr/share/icons/hicolor/192x192/apps/oros-drive.png"
-  install -Dm644 "$root/LICENSE" "$p/usr/share/doc/oros-drive/copyright"
+  install -Dm644 "$notices" "$p/usr/share/doc/oros-drive/THIRD-PARTY-NOTICES.txt"
+  { printf '%s\n' "orOS Drive: MIT, (c) orOS contributors. It is built with Go and Go modules" \
+      "under their own licences, reproduced in full in" \
+      "/usr/share/doc/oros-drive/THIRD-PARTY-NOTICES.txt." ""
+    cat "$root/LICENSE"; } > "$work/copyright"
+  install -Dm644 "$work/copyright" "$p/usr/share/doc/oros-drive/copyright"
   debv="${v#v}"; debv="${debv//-/'~'}"
   mkdir -p "$p/DEBIAN"
   cat > "$p/DEBIAN/control" <<CTL
@@ -66,5 +76,6 @@ Description: Mirror folders into your encrypted orOS Vault
 CTL
   dpkg-deb --build --root-owner-group "$p" "$out/oros-drive_${debv}_$arch.deb" >/dev/null
 done
+rm "$notices"
 (cd "$out" && sha256sum ./* > SHA256SUMS.txt)
 ls -l "$out"

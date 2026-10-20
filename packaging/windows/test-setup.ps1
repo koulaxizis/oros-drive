@@ -16,7 +16,7 @@ function Install {
 function Fail($why) { throw $why }
 
 Install
-foreach ($f in 'orOS Drive.exe', 'orosdrive.exe', 'LICENSE.txt', 'oros-drive.ico', 'unins000.exe') {
+foreach ($f in 'orOS Drive.exe', 'orosdrive.exe', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'oros-drive.ico', 'unins000.exe') {
   if (-not (Test-Path (Join-Path $app $f))) { Fail "missing $f" }
 }
 if (-not (Test-Path $lnk)) { Fail 'no Start menu shortcut' }

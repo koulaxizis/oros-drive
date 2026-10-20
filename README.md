@@ -99,4 +99,8 @@ CI runs both on every push, the interop job with `sync.js` and `vault.js` from o
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). Support orOS on [Ko-fi](https://ko-fi.com/koulaxizis).
+MIT, see [LICENSE](LICENSE).
+
+orOS Drive is built with [Go](https://go.dev/) and these Go modules: [fyne.io/systray](https://github.com/fyne-io/systray) (Apache-2.0), [fsnotify](https://github.com/fsnotify/fsnotify) (BSD-3-Clause), [go-fuse](https://github.com/hanwen/go-fuse) (BSD-3-Clause), [go-keyring](https://github.com/zalando/go-keyring) (MIT) with [wincred](https://github.com/danieljoos/wincred) (MIT) and [godbus](https://github.com/godbus/dbus) (BSD-2-Clause), and golang.org/x/sys and x/term (BSD-3-Clause, The Go Authors; x/mobile too in the Android build). Every release file carries their full licence texts in `THIRD-PARTY-NOTICES.txt` (`packaging/notices.sh` writes it from the modules actually linked in). Thank you to all of them.
+
+Support orOS on [Ko-fi](https://ko-fi.com/koulaxizis).

@@ -58,6 +58,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "files\amd64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: not IsArm64
 Source: "files\arm64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: IsArm64
 Source: "files\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "files\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "oros-drive.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
