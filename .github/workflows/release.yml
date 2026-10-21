@@ -108,3 +108,59 @@ jobs:
           sha256sum ./* > SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release create "v$VERSION" ./* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "orOS Drive v$VERSION" --generate-notes
+
+  channels:
+    # Free install channels that point at the release: the Scoop bucket in
+    # this repo (scoop bucket add oros-drive https://github.com/koulaxizis/oros-drive)
+    # and winget (a pull request to microsoft/winget-pkgs, needs the
+    # WINGET_TOKEN secret: a classic token with public_repo scope).
+    needs: [package, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          gh release download "v$VERSION" --pattern SHA256SUMS.txt --dir /tmp/sums
+          packaging/channel-manifests.sh "$VERSION" /tmp/sums/SHA256SUMS.txt out/channels
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: out/channels/winget
+          retention-days: 7
+      - name: Update the Scoop bucket on main
+        env:
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          mkdir -p bucket && cp out/channels/bucket/oros-drive.json bucket/oros-drive.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/oros-drive.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Scoop: orOS Drive $VERSION [skip ci]"
+          for i in 1 2 3; do git pull --rebase -q origin main && git push origin HEAD:main && exit 0; sleep 5; done
+          exit 1
+
+  winget:
+    needs: channels
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: winget-manifests
+          path: winget
+      - name: Submit to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { Write-Host "No WINGET_TOKEN secret: skipping winget."; exit 0 }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe submit --token $env:WINGET_TOKEN --prtitle "New version: koulaxizis.orOSDrive" winget
+          if ($LASTEXITCODE) { exit 1 }

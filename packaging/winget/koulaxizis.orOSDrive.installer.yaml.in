@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: koulaxizis.orOSDrive
+PackageVersion: @VERSION@
+InstallerType: inno
+Scope: user
+InstallModes:
+- interactive
+- silent
+- silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: @DATE@
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/koulaxizis/oros-drive/releases/download/v@VERSION@/orOS-Drive-Setup-@VERSION@.exe
+  InstallerSha256: @SHA_SETUP_UPPER@
+- Architecture: arm64
+  InstallerUrl: https://github.com/koulaxizis/oros-drive/releases/download/v@VERSION@/orOS-Drive-Setup-@VERSION@.exe
+  InstallerSha256: @SHA_SETUP_UPPER@
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -52,6 +52,10 @@ When the app is running, `add`, `remove`, `unlock` and `sync` go through it. `--
 
 Releases (tag `v*`, or Actions › Release › "Run workflow" with a version) carry the Windows setup (one for x64 and ARM64; uninstalling turns a folder showing the orOS disk back into a normal folder and offers to delete the settings and sign-in, never your folders), Windows zips (`orOS Drive.exe` without a console window + `orosdrive.exe` for the terminal), Linux tarballs and `.deb` packages for amd64 and arm64. Every CI run attaches the same files as the `orosdrive` artifact. The Windows exe is not signed yet, so SmartScreen may warn the first time ("More info › Run anyway").
 
+Also on Windows: `scoop bucket add oros-drive https://github.com/koulaxizis/oros-drive` then `scoop install oros-drive` (the portable zip; the bucket in `bucket/` is updated by every release), and `winget install koulaxizis.orOSDrive` once winget-pkgs has accepted it (the Release workflow opens that pull request when the `WINGET_TOKEN` secret is set).
+
+The app asks GitHub once a day whether a newer release exists and, if so, shows its download page in the settings and the tray menu. It never downloads or installs anything by itself; Settings › "Tell me about new versions" turns the check off.
+
 ## How it works
 
 orOS keeps your disk in `/vault` of its Dropbox app folder (the format is described in `OROS_BIBLE.md` of [koulaxizis/oros](https://github.com/koulaxizis/oros), section "vault.js"):

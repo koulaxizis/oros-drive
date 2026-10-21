@@ -45,6 +45,7 @@ type Status struct {
 	Version   string                `json:"version"`
 	Folders   map[string]FolderInfo `json:"folders"`
 	Mount     MountInfo             `json:"mount"`
+	Update    *UpdateInfo           `json:"update,omitempty"` // a newer release (UPD-1)
 }
 
 // FolderInfo is a folder's last known state.
@@ -81,10 +82,12 @@ type Service struct {
 	disk     *vdisk.Disk
 	diskKey  *secret.VaultKey
 	mnt      mountState
+	update   *UpdateInfo
 
-	kick     chan struct{}
-	changed  chan struct{} // settings changed: rebuild the watcher
-	onChange func()        // tray refresh
+	kick      chan struct{}
+	changed   chan struct{} // settings changed: rebuild the watcher
+	onChange  func()        // tray refresh
+	updateNow chan struct{} // the release check was turned back on
 }
 
 // NewService loads settings and secrets.
@@ -95,7 +98,7 @@ func NewService(version string) (*Service, error) {
 	}
 	s := &Service{Version: version, settings: st, approve: map[string]bool{},
 		folders: map[string]mirror.FolderStatus{},
-		kick:    make(chan struct{}, 1), changed: make(chan struct{}, 1)}
+		kick:    make(chan struct{}, 1), changed: make(chan struct{}, 1), updateNow: make(chan struct{}, 1)}
 	if d := os.Getenv("OROS_DRIVE_STORE_DIR"); d != "" {
 		// A vault in a local folder instead of Dropbox: tests, and
 		// trying the app on a copied vault.
@@ -169,6 +172,7 @@ func (s *Service) Status() Status {
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
 		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
+		Update:  s.update,
 	}
 	st.Settings.Folders = append([]mirror.Pair{}, s.settings.Folders...)
 	for id, f := range s.folders {
@@ -490,6 +494,8 @@ type Prefs struct {
 	Lang       *string `json:"lang,omitempty"`
 	Autostart  *bool   `json:"autostart,omitempty"`
 	Mount      *string `json:"mount,omitempty"` // "" = off
+	// UpdateCheck turns the daily new-release check on or off (UPD-1).
+	UpdateCheck *bool `json:"updateCheck,omitempty"`
 }
 
 // SetPrefs applies changed settings. The device name can change only
@@ -542,6 +548,17 @@ func (s *Service) SetPrefs(p Prefs) error {
 			return err
 		}
 		s.settings.Mount = m
+	}
+	if p.UpdateCheck != nil {
+		s.settings.NoUpdateCheck = !*p.UpdateCheck
+		if *p.UpdateCheck {
+			select {
+			case s.updateNow <- struct{}{}:
+			default:
+			}
+		} else {
+			s.update = nil
+		}
 	}
 	if p.Autostart != nil {
 		if err := SetAutostart(*p.Autostart); err != nil {

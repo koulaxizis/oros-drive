@@ -34,7 +34,9 @@ type Settings struct {
 	MaxDeletes  int           `json:"maxDeletes,omitempty"` // 0 = 50
 	Lang        string        `json:"lang,omitempty"`       // "en", "el" or "" (from the system)
 	NoAutostart bool          `json:"noAutostart,omitempty"`
-	Mount       string        `json:"mount,omitempty"` // folder showing the whole orOS disk (Linux); "" = off
+	// NoUpdateCheck: never ask GitHub for a newer release (UPD-1).
+	NoUpdateCheck bool   `json:"noUpdateCheck,omitempty"`
+	Mount         string `json:"mount,omitempty"` // folder showing the whole orOS disk (Linux); "" = off
 }
 
 func settingsFile() (string, error) {

@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"image/png"
 	"runtime"
+	"strings"
 	"sync"
 
 	"fyne.io/systray"
@@ -26,6 +27,7 @@ type Tray struct {
 	mu     sync.Mutex
 	status *systray.MenuItem
 	pause  *systray.MenuItem
+	update *systray.MenuItem // "Download orOS Drive x.y.z", only when newer (UPD-1)
 	icon   string
 }
 
@@ -39,6 +41,8 @@ func (t *Tray) ready() {
 	systray.SetTitle("orOS Drive")
 	t.status = systray.AddMenuItem("orOS Drive", "")
 	t.status.Disable()
+	t.update = systray.AddMenuItem("", "")
+	t.update.Hide()
 	systray.AddSeparator()
 	open := systray.AddMenuItem(t.word("Settings", "Ρυθμίσεις"), "")
 	syncNow := systray.AddMenuItem(t.word("Sync now", "Συγχρονισμός τώρα"), "")
@@ -59,6 +63,10 @@ func (t *Tray) ready() {
 				t.S.SetPaused(!t.S.Status().Paused)
 			case <-oros.ClickedCh:
 				Open(OrosURL)
+			case <-t.update.ClickedCh:
+				if u := t.S.Status().Update; u != nil && strings.HasPrefix(u.URL, ReleasesPage) {
+					Open(u.URL)
+				}
 			case <-quit.ClickedCh:
 				if t.OnQuit != nil {
 					t.OnQuit()
@@ -115,6 +123,12 @@ func (t *Tray) refresh() {
 		t.pause.SetTitle(t.word("Resume", "Συνέχεια"))
 	} else {
 		t.pause.SetTitle(t.word("Pause", "Παύση"))
+	}
+	if st.Update != nil {
+		t.update.SetTitle(t.word("Download orOS Drive ", "Λήψη orOS Drive ") + st.Update.Version)
+		t.update.Show()
+	} else {
+		t.update.Hide()
 	}
 	if kind != t.icon {
 		t.icon = kind
