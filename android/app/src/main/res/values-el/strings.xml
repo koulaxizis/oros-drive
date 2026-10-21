@@ -74,6 +74,14 @@
     <string name="drive_no_app">Καμία εφαρμογή του κινητού δεν ανοίγει αυτό το είδος αρχείου.</string>
     <string name="drive_up">↑ Πάνω</string>
     <string name="drive_refresh">Ανανέωση</string>
+    <string name="drive_offline">Offline</string>
+    <string name="drive_offline_keep">Διαθέσιμο offline</string>
+    <string name="drive_offline_drop">Αφαίρεση από τα offline</string>
+    <string name="drive_offline_mark">offline</string>
+    <string name="drive_offline_none">Τίποτα δεν είναι ακόμη offline. Πάτα παρατεταμένα ένα αρχείο ή φάκελο για να μείνει στο κινητό.</string>
+    <string name="drive_offline_added">Το %1$s μένει offline. Κατεβαίνει στο παρασκήνιο και ενημερώνεται μόνο του.</string>
+    <string name="drive_offline_by_folder">Μένει offline μαζί με τον φάκελό του. Για να σταματήσει, αφαίρεσε τον φάκελο στα Offline.</string>
+    <string name="drive_offline_hint">Μένουν στο κινητό και ενημερώνονται όταν αλλάζουν αλλού. Πάτα για άνοιγμα, παρατεταμένα για αφαίρεση.</string>
     <string name="dav_url">Βάλε την πλήρη διεύθυνση https:// του server, χωρίς κωδικό μέσα της.</string>
     <string name="dav_missing">Συμπλήρωσε το όνομα χρήστη και τον κωδικό εφαρμογής.</string>
     <string name="dav_unreachable">Ο server δεν απάντησε. Έλεγξε τη διεύθυνση και τη σύνδεση.</string>

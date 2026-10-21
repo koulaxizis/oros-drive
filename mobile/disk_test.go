@@ -86,3 +86,40 @@ func TestDiskForTheFilesApp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOfflineFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OROS_DRIVE_STORE_DIR", filepath.Join(dir, "cloud"))
+	d, err := NewDrive(filepath.Join(dir, "data"), "Pixel 8", fakeFolders{}, memSecrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DiskPin("/internal/Docs", true); err == nil || err.Error() != "locked" {
+		t.Fatalf("want locked, got %v", err)
+	}
+	if err := d.Unlock("phone pass", true); err != nil {
+		t.Fatal(err)
+	}
+	v := vault.New(d.s.Store, vault.NewPassphrase("phone pass"))
+	if err := v.PutFiles(map[string]vault.File{"/internal/Docs/a.txt": {Data: []byte("alpha")}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DiskPin("/internal/Nope", true); err == nil || err.Error() != "not-found" {
+		t.Fatal(err)
+	}
+	if err := d.DiskPin("/internal/Docs", true); err != nil {
+		t.Fatal(err)
+	}
+	if js, _ := d.DiskPins(); js != `["/internal/Docs"]` {
+		t.Fatal(js)
+	}
+	js, err := d.DiskSyncPins()
+	var st vdisk.PinStatus
+	json.Unmarshal([]byte(js), &st)
+	if err != nil || st.Files != 1 || st.Got != 1 {
+		t.Fatal(js, err)
+	}
+	if err := d.DiskClearCache(); err != nil || d.DiskCacheSize() != 5 {
+		t.Fatal("offline file cleared", err)
+	}
+}

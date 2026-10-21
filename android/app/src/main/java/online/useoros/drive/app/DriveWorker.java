@@ -21,8 +21,8 @@ import online.useoros.drive.mobile.Drive;
 /**
  * orOS Drive in the background (DRIVE-A): one mirror pass every 15
  * minutes (Android's shortest period), on Wi-Fi only and/or while
- * charging when the person chose so. A pass costs one listing of each
- * folder; unchanged files are not read again.
+ * charging when the person chose so, then the offline files. A pass
+ * costs one listing of each folder; unchanged files are not read again.
  */
 public class DriveWorker extends Worker {
     static final String PREFS = "oros-drive";
@@ -35,9 +35,15 @@ public class DriveWorker extends Worker {
     public Result doWork() {
         try {
             Drive d = DriveCore.get(getApplicationContext());
-            for (int i = 0; i < 3; i++) {
-                if (!d.sync()) break;          // files still being written: once more, a bit later
-                Thread.sleep(5000);
+            try {
+                for (int i = 0; i < 3; i++) {
+                    if (!d.sync()) break;      // files still being written: once more, a bit later
+                    Thread.sleep(5000);
+                }
+            } finally {
+                // Offline files (wave 3): what is pinned and not here yet,
+                // under the same Wi-Fi / charging conditions.
+                try { d.diskSyncPins(); } catch (Exception ignored) { }
             }
             return Result.success();
         } catch (Exception e) {
