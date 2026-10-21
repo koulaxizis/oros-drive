@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 
@@ -206,6 +207,48 @@ func (d *Drive) DiskPutNew(dir, name, local string) (string, error) {
 		return "", diskErr(err)
 	}
 	return asJSON(i), nil
+}
+
+// DiskPutNewMany is DiskPutNew for many files with one manifest write
+// (camera backup). in is a JSON array of {"dir","name","local"}; the
+// result is a JSON array in the same order of {"path"} or {"error"}
+// (the provider's fixed messages: "too-big", "bad-name", ...). An
+// error returned means the batch stopped (offline, locked): the files
+// with a "path" are in orOS, the others go next time.
+func (d *Drive) DiskPutNewMany(in string) (string, error) {
+	k, err := d.disk()
+	if err != nil {
+		return "", err
+	}
+	var items []struct {
+		Dir   string `json:"dir"`
+		Name  string `json:"name"`
+		Local string `json:"local"`
+	}
+	if err := json.Unmarshal([]byte(in), &items); err != nil {
+		return "", err
+	}
+	files := make([]vdisk.NewFile, len(items))
+	for i, it := range items {
+		files[i] = vdisk.NewFile{Dir: it.Dir, Name: it.Name, Local: it.Local}
+	}
+	res, err := k.PutNewMany(files)
+	type one struct {
+		Path  string `json:"path,omitempty"`
+		Error string `json:"error,omitempty"`
+	}
+	out := make([]one, len(res))
+	for i, r := range res {
+		switch {
+		case r.Err != nil:
+			out[i].Error = diskErr(r.Err).Error()
+		case r.Info.Path != "":
+			out[i].Path = r.Info.Path
+		default:
+			out[i].Error = "not-sent"
+		}
+	}
+	return asJSON(out), diskErr(err)
 }
 
 // CameraDir is the disk folder camera uploads go to

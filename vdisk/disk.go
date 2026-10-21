@@ -698,62 +698,126 @@ var errUnchanged = errors.New("nothing to change")
 // retried upload); when it holds something else, the file becomes
 // "name (2).ext", "name (3).ext", ... It returns the file as stored.
 func (d *Disk) PutNew(dir, name, local string) (Info, error) {
-	if dir = Clean(dir); dir == "" || name == "" || strings.ContainsAny(name, "/\\\x00") {
-		return Info{}, ErrBadName
-	}
-	if Clean(dir+"/"+name) != dir+"/"+name || !nameOK(dir+"/"+name) {
-		return Info{}, ErrBadName
-	}
-	fi, err := os.Stat(local)
+	res, err := d.PutNewMany([]NewFile{{Dir: dir, Name: name, Local: local}})
 	if err != nil {
 		return Info{}, err
 	}
-	if fi.Size() > d.maxFile() {
-		return Info{}, ErrTooBig
+	return res[0].Info, res[0].Err
+}
+
+// NewFile is one file for PutNewMany.
+type NewFile struct {
+	Dir, Name, Local string
+}
+
+// NewResult is what became of one NewFile: where it is in orOS, or why
+// it could not go (ErrBadName, ErrTooBig, ErrNotDir, a read error).
+type NewResult struct {
+	Info Info
+	Err  error
+}
+
+// PutNewMany is PutNew for many files with one manifest write (camera
+// backup sends thousands of photos; a write per photo would rewrite the
+// whole manifest each time). Each file follows the PutNew rules. A file
+// that cannot go is told in its result and the others still go; an
+// upload that fails stops the batch: what was uploaded before it is
+// committed, and the error is returned with the results.
+func (d *Disk) PutNewMany(items []NewFile) ([]NewResult, error) {
+	res := make([]NewResult, len(items))
+	type up struct {
+		i     int
+		dir   string
+		e     vault.Entry
+		plain []byte
 	}
-	plain, err := os.ReadFile(local)
-	if err != nil {
-		return Info{}, err
-	}
-	r, err := d.snapshot()
-	if err != nil {
-		return Info{}, err
-	}
-	mt := mime.TypeByExtension(path.Ext(name))
-	if i := strings.IndexByte(mt, ';'); i >= 0 {
-		mt = mt[:i]
-	}
-	e, err := d.Vault.Upload(r, plain, mt)
-	if err != nil {
-		return Info{}, err
-	}
-	ext := path.Ext(name)
-	stem := strings.TrimSuffix(name, ext)
-	var at string
-	err = d.change(func(files map[string]vault.Entry) error {
-		if _, ok := files[dir]; ok {
-			return ErrNotDir
+	var ups []up
+	var upErr error
+	var r *vault.Remote
+	for i, it := range items {
+		dir := Clean(it.Dir)
+		if dir == "" || it.Name == "" || strings.ContainsAny(it.Name, "/\\\x00") ||
+			Clean(dir+"/"+it.Name) != dir+"/"+it.Name || !nameOK(dir+"/"+it.Name) {
+			res[i].Err = ErrBadName
+			continue
 		}
-		for n := 1; ; n++ {
-			at = dir + "/" + name
-			if n > 1 {
-				at = fmt.Sprintf("%s/%s (%d)%s", dir, stem, n, ext)
-			}
-			cur, taken := files[at]
-			if taken && cur.H == e.H {
-				return errUnchanged
-			}
-			if !taken && !hasPrefix(files, at) {
-				files[at] = e
-				return nil
+		fi, err := os.Stat(it.Local)
+		if err != nil {
+			res[i].Err = err
+			continue
+		}
+		if fi.Size() > d.maxFile() {
+			res[i].Err = ErrTooBig
+			continue
+		}
+		plain, err := os.ReadFile(it.Local)
+		if err != nil {
+			res[i].Err = err
+			continue
+		}
+		if r == nil {
+			if r, err = d.snapshot(); err != nil {
+				return res, err
 			}
 		}
+		mt := mime.TypeByExtension(path.Ext(it.Name))
+		if k := strings.IndexByte(mt, ';'); k >= 0 {
+			mt = mt[:k]
+		}
+		e, err := d.Vault.Upload(r, plain, mt)
+		if err != nil {
+			upErr = err
+			break
+		}
+		ups = append(ups, up{i, dir, e, plain})
+	}
+	if len(ups) == 0 {
+		return res, upErr
+	}
+	at := make([]string, len(ups))
+	err := d.change(func(files map[string]vault.Entry) error {
+		added := false
+		for k, u := range ups {
+			res[u.i].Err = nil
+			if _, ok := files[u.dir]; ok {
+				res[u.i].Err = ErrNotDir
+				continue
+			}
+			name := items[u.i].Name
+			ext := path.Ext(name)
+			stem := strings.TrimSuffix(name, ext)
+			for n := 1; ; n++ {
+				at[k] = u.dir + "/" + name
+				if n > 1 {
+					at[k] = fmt.Sprintf("%s/%s (%d)%s", u.dir, stem, n, ext)
+				}
+				cur, taken := files[at[k]]
+				if taken && cur.H == u.e.H {
+					break
+				}
+				if !taken && !hasPrefix(files, at[k]) {
+					files[at[k]] = u.e
+					added = true
+					break
+				}
+			}
+		}
+		if !added {
+			return errUnchanged
+		}
+		return nil
 	})
 	if err != nil && !errors.Is(err, errUnchanged) {
-		return Info{}, err
+		return res, err
 	}
-	d.keep(e.H, plain)
-	return d.info(at, e), nil
+	for k, u := range ups {
+		if res[u.i].Err != nil {
+			continue
+		}
+		d.keep(u.e.H, u.plain)
+		res[u.i].Info = d.info(at[k], u.e)
+	}
+	return res, upErr
 }
 
 // keep puts content just uploaded into the cache, so opening it again

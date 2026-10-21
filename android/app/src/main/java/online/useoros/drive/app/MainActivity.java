@@ -2,9 +2,7 @@ package online.useoros.drive.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -12,14 +10,11 @@ import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.text.InputType;
 import android.text.format.DateUtils;
-import android.util.TypedValue;
-import android.view.Gravity;
+import android.text.format.Formatter;
 import android.view.View;
-import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,9 +23,12 @@ import androidx.browser.customtabs.CustomTabsIntent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -38,14 +36,16 @@ import online.useoros.drive.mobile.Drive;
 
 /**
  * orOS Drive for Android (online.useoros.drive): sign in (Dropbox,
- * Nextcloud or any WebDAV folder), unlock, pick folders to mirror,
- * browse the orOS disk, see each folder's state. Every call into the
- * Go core runs off the main thread.
+ * Nextcloud or any WebDAV folder), unlock, pick folders to mirror and
+ * photo folders to back up, browse the orOS disk, see each folder's
+ * state. Every call into the Go core runs off the main thread.
  */
 public class MainActivity extends Activity {
     private static final int PICK = 41;
+    private static final int MEDIA = 2;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private Ui ui;
     private Drive drive;
     private LinearLayout body;
     private JSONObject status = new JSONObject();
@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
     private String unlockMsg = "";
     private Boolean shown; // the Files app root was last told this
     private long cacheBytes;
+    /** The phone's photo folders, null until looked up. */
+    private List<CameraUploader.Folder> media;
     private final Runnable poll = new Runnable() {
         @Override public void run() { refresh(); main.postDelayed(this, 3000); }
     };
@@ -60,16 +62,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        setTitle(R.string.drive_title);
-        ScrollView sv = new ScrollView(this);
-        body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        body.setPadding(pad, pad, pad, pad);
-        // Taking the focus from a field lets the screen re-render.
-        body.setFocusableInTouchMode(true);
-        sv.addView(body);
-        setContentView(sv);
+        ui = new Ui(this, getString(R.string.drive_title), false);
+        body = ui.body;
         // Upload progress, conflict copies and unsaved files are told
         // in notifications (Android 13+ asks once).
         if (android.os.Build.VERSION.SDK_INT >= 33 && b == null
@@ -82,42 +76,15 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 main.post(() -> {
                     body.removeAllViews();
-                    body.addView(text(getString(R.string.drive_unavailable, String.valueOf(e.getMessage())), 15));
+                    ui.card(body).addView(ui.text(getString(R.string.drive_unavailable, String.valueOf(e.getMessage())), 15));
                 });
             }
         });
     }
 
-    @Override protected void onResume() { super.onResume(); main.post(poll); }
+    @Override protected void onResume() { super.onResume(); main.post(poll); findMedia(); }
     @Override protected void onPause() { super.onPause(); main.removeCallbacks(poll); }
     @Override protected void onDestroy() { super.onDestroy(); io.shutdown(); }
-
-    private int dp(int v) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
-    }
-
-    private TextView text(CharSequence s, int sp) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setPadding(0, dp(4), 0, dp(4));
-        return t;
-    }
-
-    private TextView heading(int res) {
-        TextView t = text(getString(res), 18);
-        t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        t.setPadding(0, dp(16), 0, dp(4));
-        return t;
-    }
-
-    private Button button(int res, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(res);
-        b.setAllCaps(false);
-        b.setOnClickListener(l);
-        return b;
-    }
 
     /** Runs a core call off the main thread, then refreshes; an error
      *  shows as a toast. */
@@ -152,6 +119,15 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** Looks up the photo folders (MediaStore) again, off the main thread. */
+    private void findMedia() {
+        if (!CameraUploader.allowed(this)) return;
+        io.execute(() -> {
+            List<CameraUploader.Folder> l = CameraUploader.discover(this);
+            main.post(() -> { media = l; render(); });
+        });
+    }
+
     private void render() {
         // Keep a field being typed in: rebuild only when nothing has focus.
         View f = getCurrentFocus();
@@ -159,22 +135,23 @@ public class MainActivity extends Activity {
         body.removeAllViews();
         JSONObject settings = status.optJSONObject("settings");
         String device = settings != null ? settings.optString("device") : "";
-        body.addView(text(getString(R.string.drive_intro, device), 15));
 
         if (!status.optBoolean("signedIn")) {
+            body.addView(ui.dim(getString(R.string.drive_intro, device)));
             renderLogin();
             return;
         }
-        body.addView(text(getString(R.string.drive_signed_in, status.optString("account")), 13));
         if (!status.optBoolean("unlocked")) {
+            body.addView(ui.dim(getString(R.string.drive_signed_in, status.optString("account"))));
             renderUnlock();
             return;
         }
         renderSync();
-        body.addView(button(R.string.drive_browse, v -> startActivity(new Intent(this, BrowseActivity.class))));
-        renderFolders(settings);
+        renderMedia(device);
+        renderFolders(settings, device);
         renderFiles();
         renderOptions(settings);
+        renderAccount();
         renderEvents();
     }
 
@@ -184,27 +161,29 @@ public class MainActivity extends Activity {
     /** Dropbox, Nextcloud (Login Flow v2) or a WebDAV folder with an
      *  app password. The server is checked before anything is saved. */
     private void renderLogin() {
-        body.addView(heading(R.string.drive_login));
-        body.addView(text(getString(R.string.drive_login_text), 15));
-        body.addView(button(R.string.drive_login, v -> login()));
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading("Dropbox"));
+        c.addView(ui.dim(getString(R.string.drive_login_text)));
+        c.addView(ui.row(ui.primary(getString(R.string.drive_login), v -> login())));
 
-        body.addView(heading(R.string.drive_or_server));
-        body.addView(text(getString(R.string.drive_server_text), 14));
-        davUrl = field(davUrl, R.string.drive_server_url, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        davDir = field(davDir, R.string.drive_server_dir, InputType.TYPE_CLASS_TEXT);
-        body.addView(button(R.string.drive_nextcloud, v -> nextcloud()));
-        TextView other = heading(R.string.drive_other_server);
-        other.setTextSize(16);
-        body.addView(other);
-        davUser = field(davUser, R.string.drive_server_user, InputType.TYPE_CLASS_TEXT);
-        davPass = field(davPass, R.string.drive_server_pass, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        body.addView(button(R.string.drive_connect, v -> webdav()));
+        c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_or_server)));
+        c.addView(ui.dim(getString(R.string.drive_server_text)));
+        davUrl = field(c, davUrl, R.string.drive_server_url, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        davDir = field(c, davDir, R.string.drive_server_dir, InputType.TYPE_CLASS_TEXT);
+        c.addView(ui.row(ui.primary(getString(R.string.drive_nextcloud), v -> nextcloud())));
+        TextView other = ui.heading(getString(R.string.drive_other_server));
+        other.setPadding(0, ui.dp(16), 0, ui.dp(4));
+        c.addView(other);
+        davUser = field(c, davUser, R.string.drive_server_user, InputType.TYPE_CLASS_TEXT);
+        davPass = field(c, davPass, R.string.drive_server_pass, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        c.addView(ui.row(ui.secondary(getString(R.string.drive_connect), v -> webdav())));
 
         String login = status.optString("login");
         String m = loginMsg;
         if (m.isEmpty() && "waiting".equals(login)) m = getString(R.string.drive_login_wait);
         else if (m.isEmpty() && !login.isEmpty()) m = davText(login);
-        if (!m.isEmpty()) body.addView(text(m, 14));
+        if (!m.isEmpty()) ui.card(body).addView(ui.text(m, 14));
     }
 
     /** Leaves the fields (and hides the keyboard), so the screen can
@@ -219,12 +198,10 @@ public class MainActivity extends Activity {
     }
 
     /** A field that keeps what was typed across re-renders. */
-    private EditText field(EditText old, int hint, int type) {
-        EditText e = new EditText(this);
-        e.setHint(hint);
-        e.setInputType(type);
+    private EditText field(LinearLayout into, EditText old, int hint, int type) {
+        EditText e = ui.field(getString(hint), type);
         if (old != null) e.setText(old.getText());
-        body.addView(e);
+        into.addView(e);
         return e;
     }
 
@@ -299,19 +276,24 @@ public class MainActivity extends Activity {
     }
 
     private void renderUnlock() {
-        body.addView(heading(R.string.drive_unlock));
-        body.addView(text(getString("reset".equals(status.optString("needsKey"))
-                ? R.string.drive_unlock_reset : R.string.drive_unlock_text), 15));
-        EditText pass = new EditText(this);
-        pass.setHint(R.string.drive_passphrase);
-        pass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        body.addView(pass);
-        body.addView(button(R.string.drive_unlock, v -> unlock(pass, false)));
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_unlock)));
+        c.addView(ui.dim(getString("reset".equals(status.optString("needsKey"))
+                ? R.string.drive_unlock_reset : R.string.drive_unlock_text)));
+        EditText pass = ui.field(getString(R.string.drive_passphrase), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        c.addView(pass);
+        c.addView(ui.row(ui.primary(getString(R.string.drive_unlock), v -> unlock(pass, false))));
         if (askCreate) {
-            body.addView(text(getString(R.string.drive_no_vault), 14));
-            body.addView(button(R.string.drive_create, v -> unlock(pass, true)));
+            c.addView(ui.text(getString(R.string.drive_no_vault), 14));
+            c.addView(ui.row(ui.secondary(getString(R.string.drive_create), v -> unlock(pass, true))));
         }
-        if (!unlockMsg.isEmpty()) body.addView(text(unlockMsg, 14));
+        if (!unlockMsg.isEmpty()) {
+            TextView m = ui.text(unlockMsg, 14);
+            m.setTextColor(ui.danger);
+            c.addView(m);
+        }
+        c = ui.card(body);
+        c.addView(ui.row(ui.danger(getString(R.string.drive_logout), v -> logout())));
     }
 
     private void unlock(EditText pass, boolean create) {
@@ -335,20 +317,28 @@ public class MainActivity extends Activity {
         });
     }
 
+    /** The state at a glance, Sync now / Pause, and the disk. */
     private void renderSync() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout c = ui.card(body);
         boolean paused = status.optBoolean("paused");
-        row.addView(button(R.string.drive_sync_now, v -> { call(d -> d.sync()); }));
-        row.addView(button(paused ? R.string.drive_resume : R.string.drive_pause, v -> call(d -> d.setPaused(!paused))));
-        body.addView(row);
-        String line;
-        if (status.optBoolean("syncing")) line = getString(R.string.drive_syncing);
-        else if (paused) line = getString(R.string.drive_paused);
-        else line = getString(R.string.drive_last, when(status.optString("lastSync")));
-        if (!status.optString("error").isEmpty()) line += "\n" + getString(R.string.drive_error, status.optString("error"));
-        body.addView(text(line, 14));
+        String err = status.optString("error");
+        String head;
+        if (status.optBoolean("syncing")) head = getString(R.string.drive_syncing);
+        else if (paused) head = getString(R.string.drive_paused);
+        else if (!err.isEmpty()) head = getString(R.string.drive_error, err);
+        else head = getString(R.string.drive_ok);
+        TextView h = ui.heading(head);
+        h.setTextSize(18);
+        if (!err.isEmpty() && !paused) h.setTextColor(ui.danger);
+        c.addView(h);
+        c.addView(ui.dim(getString(R.string.drive_last, when(status.optString("lastSync")))));
+        c.addView(ui.row(
+                ui.primary(getString(R.string.drive_sync_now), v -> call(Drive::sync)),
+                ui.secondary(getString(paused ? R.string.drive_resume : R.string.drive_pause), v -> call(d -> d.setPaused(!paused)))));
+        LinearLayout b = ui.card(body);
+        b.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
+        b.addView(ui.item("🗂", getString(R.string.drive_browse), getString(R.string.drive_browse_sub),
+                v -> startActivity(new Intent(this, BrowseActivity.class))));
     }
 
     private String when(String iso) {
@@ -358,17 +348,79 @@ public class MainActivity extends Activity {
             f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
             Date d = f.parse(iso.substring(0, 19));
             if (d == null) return iso;
-            return DateUtils.getRelativeTimeSpanString(d.getTime()).toString();
+            return DateUtils.getRelativeTimeSpanString(d.getTime(), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString();
         } catch (Exception e) {
             return iso;
         }
     }
 
-    private void renderFolders(JSONObject settings) {
-        body.addView(heading(R.string.drive_folders));
+    /** Photo and video backup: the phone's media folders, each on or off. */
+    private void renderMedia(String device) {
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_media_title)));
+        c.addView(ui.dim(getString(R.string.drive_media_text, device)));
+        if (!CameraUploader.allowed(this)) {
+            c.addView(ui.row(ui.primary(getString(R.string.drive_media_find), v -> requestPermissions(CameraUploader.permissions(), MEDIA))));
+            return;
+        }
+        if (media == null) {
+            c.addView(ui.dim(getString(R.string.drive_media_looking)));
+            return;
+        }
+        if (media.isEmpty()) {
+            c.addView(ui.dim(getString(R.string.drive_media_none)));
+            return;
+        }
+        Set<String> on = CameraUploader.chosen(this);
+        NumberFormat nf = NumberFormat.getIntegerInstance();
+        for (CameraUploader.Folder f : media) {
+            boolean chosen = on.contains(f.key);
+            String name = CameraUploader.CAMERA.equals(f.key) ? getString(R.string.drive_media_camera) : f.name;
+            Switch s = ui.toggle(name, chosen);
+            s.setOnCheckedChangeListener((b, yes) -> {
+                if (!yes) { CameraUploader.choose(this, f.key, false, false); findMedia(); return; }
+                new AlertDialog.Builder(this)
+                        .setTitle(name)
+                        .setMessage(getResources().getQuantityString(R.plurals.drive_media_ask, f.count, nf.format(f.count)))
+                        .setPositiveButton(R.string.drive_media_all, (d, w) -> mediaOn(f.key, true))
+                        .setNeutralButton(R.string.drive_media_new, (d, w) -> mediaOn(f.key, false))
+                        .setNegativeButton(R.string.drive_cancel, null)
+                        .setOnDismissListener(d -> render())
+                        .show();
+            });
+            c.addView(s);
+            String sub = getResources().getQuantityString(R.plurals.drive_media_count, f.count, nf.format(f.count))
+                    + " · " + Formatter.formatShortFileSize(this, f.bytes);
+            if (chosen) {
+                sub += " · " + (f.waiting > 0 ? getString(R.string.drive_media_waiting, nf.format(f.waiting))
+                        : getString(R.string.drive_media_sent));
+            }
+            TextView t = ui.dim(sub);
+            t.setPadding(0, 0, 0, ui.dp(chosen && !CameraUploader.all(this, f.key) ? 0 : 6));
+            c.addView(t);
+            if (chosen && !CameraUploader.all(this, f.key)) {
+                c.addView(ui.link(getString(R.string.drive_media_older), v -> {
+                    CameraUploader.older(this, f.key);
+                    DriveWorker.now(this);
+                    findMedia();
+                }));
+            }
+        }
+    }
+
+    private void mediaOn(String key, boolean older) {
+        CameraUploader.choose(this, key, true, older);
+        DriveWorker.schedule(this);
+        DriveWorker.now(this);
+        findMedia();
+    }
+
+    private void renderFolders(JSONObject settings, String device) {
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_folders)));
         JSONArray folders = settings != null ? settings.optJSONArray("folders") : null;
         JSONObject states = status.optJSONObject("folders");
-        if (folders == null || folders.length() == 0) body.addView(text(getString(R.string.drive_none), 14));
+        if (folders == null || folders.length() == 0) c.addView(ui.dim(getString(R.string.drive_intro, device)));
         for (int i = 0; folders != null && i < folders.length(); i++) {
             JSONObject p = folders.optJSONObject(i);
             if (p == null) continue;
@@ -376,10 +428,11 @@ public class MainActivity extends Activity {
             JSONObject f = states != null ? states.optJSONObject(id) : null;
             if (f == null) f = new JSONObject();
             String remote = p.optString("remote");
-            TextView name = text(remote.substring(remote.lastIndexOf('/') + 1), 16);
-            name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-            body.addView(name);
-            body.addView(text(folderLabel(p.optString("local")) + "\norOS › " + remote.replaceFirst("^/internal/", "").replace("/", " › "), 13));
+            TextView name = ui.text(remote.substring(remote.lastIndexOf('/') + 1), 15);
+            name.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+            name.setPadding(0, ui.dp(i == 0 ? 4 : 14), 0, 0);
+            c.addView(name);
+            c.addView(ui.dim(folderLabel(p.optString("local")) + "  →  orOS › " + remote.replaceFirst("^/internal/", "").replace("/", " › ")));
             boolean paused = p.optBoolean("paused");
             String state = f.optString("state");
             String line;
@@ -392,35 +445,36 @@ public class MainActivity extends Activity {
             JSONArray lo = f.optJSONArray("localOnly"), sk = f.optJSONArray("skipped");
             if (lo != null && lo.length() > 0) line += "\n" + getString(R.string.drive_local_only, lo.length());
             if (sk != null && sk.length() > 0) line += "\n" + getString(R.string.drive_skipped, sk.length());
-            body.addView(text(line, 14));
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
+            c.addView(ui.text(line, 14));
             if ("held".equals(state) && !paused) {
-                row.addView(button(R.string.drive_approve, v -> call(d -> { d.approveDeletes(id); d.sync(); })));
-                row.addView(button(R.string.drive_hold, v -> call(d -> d.pauseFolder(id, true))));
+                c.addView(ui.row(
+                        ui.primary(getString(R.string.drive_approve), v -> call(d -> { d.approveDeletes(id); d.sync(); })),
+                        ui.secondary(getString(R.string.drive_hold), v -> call(d -> d.pauseFolder(id, true)))));
             } else {
-                row.addView(button(paused ? R.string.drive_resume : R.string.drive_pause, v -> call(d -> d.pauseFolder(id, !paused))));
-                row.addView(button(R.string.drive_remove, v -> new AlertDialog.Builder(this)
-                        .setMessage(R.string.drive_remove_ask)
-                        .setPositiveButton(R.string.drive_remove, (dlg, w) -> {
-                            String grant = p.optString("local");
-                            call(d -> d.removeFolder(id));
-                            try {
-                                getContentResolver().releasePersistableUriPermission(Uri.parse(grant),
-                                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                            } catch (SecurityException ignored) { }
-                        })
-                        .setNegativeButton(R.string.drive_cancel, null)
-                        .show()));
+                c.addView(ui.row(
+                        ui.secondary(getString(paused ? R.string.drive_resume : R.string.drive_pause), v -> call(d -> d.pauseFolder(id, !paused))),
+                        ui.secondary(getString(R.string.drive_remove), v -> new AlertDialog.Builder(this)
+                                .setMessage(R.string.drive_remove_ask)
+                                .setPositiveButton(R.string.drive_remove, (dlg, w) -> {
+                                    String grant = p.optString("local");
+                                    call(d -> d.removeFolder(id));
+                                    try {
+                                        getContentResolver().releasePersistableUriPermission(Uri.parse(grant),
+                                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                                    } catch (SecurityException ignored) { }
+                                })
+                                .setNegativeButton(R.string.drive_cancel, null)
+                                .show())));
             }
-            body.addView(row);
         }
-        body.addView(button(R.string.drive_add, v -> {
+        LinearLayout add = ui.row(ui.primary(getString(R.string.drive_add), v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             startActivityForResult(i, PICK);
         }));
+        add.setPadding(0, ui.dp(12), 0, 0);
+        c.addView(add);
     }
 
     /** "primary:Documents/Work" → "Documents/Work". */
@@ -446,11 +500,14 @@ public class MainActivity extends Activity {
             return;
         }
         String label = folderLabel(tree.toString());
-        EditText name = new EditText(this);
+        EditText name = ui.field(getString(R.string.drive_name_title), InputType.TYPE_CLASS_TEXT);
         name.setText(label.contains("/") ? label.substring(label.lastIndexOf('/') + 1) : label);
+        LinearLayout box = new LinearLayout(this);
+        box.setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0);
+        box.addView(name);
         new AlertDialog.Builder(this)
                 .setTitle(R.string.drive_name_title)
-                .setView(name)
+                .setView(box)
                 .setPositiveButton(R.string.drive_add, (d, w) -> {
                     String n = name.getText().toString().trim();
                     call(dr -> {
@@ -466,57 +523,42 @@ public class MainActivity extends Activity {
 
     /** The disk in the Files app (DriveProvider) and its downloaded copies. */
     private void renderFiles() {
-        body.addView(heading(R.string.drive_files_title));
-        body.addView(text(getString(R.string.drive_files_text), 14));
-        body.addView(text(getString(R.string.drive_cache,
-                android.text.format.Formatter.formatShortFileSize(this, cacheBytes)), 13));
-        if (cacheBytes > 0) body.addView(button(R.string.drive_clear_cache, v -> call(Drive::diskClearCache)));
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_files_title)));
+        c.addView(ui.dim(getString(R.string.drive_files_text)));
+        c.addView(ui.text(getString(R.string.drive_cache, Formatter.formatShortFileSize(this, cacheBytes)), 14));
+        if (cacheBytes > 0) c.addView(ui.row(ui.secondary(getString(R.string.drive_clear_cache), v -> call(Drive::diskClearCache))));
     }
 
     private void renderOptions(JSONObject settings) {
-        body.addView(heading(R.string.drive_options));
-        SharedPreferences prefs = getSharedPreferences(DriveWorker.PREFS, Context.MODE_PRIVATE);
-        CheckBox wifi = new CheckBox(this);
-        wifi.setText(R.string.drive_wifi);
-        wifi.setChecked(prefs.getBoolean("wifi-only", true));
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_options)));
+        android.content.SharedPreferences prefs = getSharedPreferences(DriveWorker.PREFS, MODE_PRIVATE);
+        Switch wifi = ui.toggle(getString(R.string.drive_wifi), prefs.getBoolean("wifi-only", true));
         wifi.setOnCheckedChangeListener((b, on) -> { prefs.edit().putBoolean("wifi-only", on).apply(); DriveWorker.schedule(this); });
-        body.addView(wifi);
-        CheckBox charging = new CheckBox(this);
-        charging.setText(R.string.drive_charging);
-        charging.setChecked(prefs.getBoolean("charging-only", false));
+        c.addView(wifi);
+        Switch charging = ui.toggle(getString(R.string.drive_charging), prefs.getBoolean("charging-only", false));
         charging.setOnCheckedChangeListener((b, on) -> { prefs.edit().putBoolean("charging-only", on).apply(); DriveWorker.schedule(this); });
-        body.addView(charging);
-        // Camera backup (wave 4): only what is taken from now on.
-        CheckBox camera = new CheckBox(this);
-        camera.setText(R.string.drive_camera);
-        camera.setChecked(prefs.getBoolean(CameraUploader.ON, false) && CameraUploader.allowed(this));
-        camera.setOnCheckedChangeListener((b, on) -> {
-            if (!on) { prefs.edit().putBoolean(CameraUploader.ON, false).apply(); return; }
-            if (CameraUploader.allowed(this)) cameraOn();
-            else requestPermissions(CameraUploader.permissions(), 2);
-        });
-        body.addView(camera);
-        if (prefs.getBoolean(CameraUploader.ON, false)) {
-            body.addView(text(getString(R.string.drive_camera_where), 13));
-        }
+        c.addView(charging);
 
-        body.addView(text(getString(R.string.drive_max_file), 14));
-        EditText max = new EditText(this);
-        max.setInputType(InputType.TYPE_CLASS_NUMBER);
+        TextView l = ui.text(getString(R.string.drive_max_file), 14);
+        l.setPadding(0, ui.dp(10), 0, 0);
+        c.addView(l);
+        EditText max = ui.field("500", InputType.TYPE_CLASS_NUMBER);
         int mb = settings != null ? settings.optInt("maxFileMB", 0) : 0;
         max.setText(String.valueOf(mb > 0 ? mb : 500));
-        body.addView(max);
+        c.addView(max);
         boolean noFolders = settings == null || settings.optJSONArray("folders") == null
                 || settings.optJSONArray("folders").length() == 0;
         EditText dev = null;
         if (noFolders) {
-            body.addView(text(getString(R.string.drive_device), 14));
-            dev = new EditText(this);
+            c.addView(ui.text(getString(R.string.drive_device), 14));
+            dev = ui.field(getString(R.string.drive_device), InputType.TYPE_CLASS_TEXT);
             dev.setText(settings != null ? settings.optString("device") : "");
-            body.addView(dev);
+            c.addView(dev);
         }
         EditText devField = dev;
-        body.addView(button(R.string.drive_save, v -> {
+        c.addView(ui.row(ui.primary(getString(R.string.drive_save), v -> {
             JSONObject p = new JSONObject();
             try {
                 p.put("maxFileMB", Integer.parseInt(max.getText().toString().trim()));
@@ -524,47 +566,43 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return;
             }
-            max.clearFocus();
-            if (devField != null) devField.clearFocus();
+            unfocus();
             call(d -> d.setPrefs(p.toString()));
-        }));
-        body.addView(text(getString(R.string.drive_trash), 13));
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(button(R.string.drive_lock, v -> call(Drive::lock)));
-        row.addView(button(R.string.drive_logout, v -> new AlertDialog.Builder(this)
+        })));
+    }
+
+    private void renderAccount() {
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_account)));
+        c.addView(ui.text(getString(R.string.drive_signed_in, status.optString("account")), 14));
+        c.addView(ui.dim(getString(R.string.drive_trash)));
+        c.addView(ui.row(
+                ui.secondary(getString(R.string.drive_lock), v -> call(Drive::lock)),
+                ui.danger(getString(R.string.drive_logout), v -> logout())));
+    }
+
+    private void logout() {
+        new AlertDialog.Builder(this)
                 .setMessage(R.string.drive_logout_ask)
                 .setPositiveButton(R.string.drive_logout, (d, w) -> { DriveWorker.cancel(this); call(Drive::logout); })
                 .setNegativeButton(R.string.drive_cancel, null)
-                .show()));
-        body.addView(row);
-    }
-
-    private void cameraOn() {
-        getSharedPreferences(DriveWorker.PREFS, Context.MODE_PRIVATE).edit()
-                .putBoolean(CameraUploader.ON, true)
-                .putLong(CameraUploader.SINCE, System.currentTimeMillis() / 1000)
-                .remove(CameraUploader.DONE)
-                .apply();
-        DriveWorker.schedule(this);
-        render();
+                .show();
     }
 
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         super.onRequestPermissionsResult(code, perms, results);
-        if (code != 2) return;
-        if (CameraUploader.allowed(this)) cameraOn();
-        else {
-            Toast.makeText(this, R.string.drive_camera_denied, Toast.LENGTH_LONG).show();
-            render();
-        }
+        if (code != MEDIA) return;
+        if (CameraUploader.allowed(this)) findMedia();
+        else Toast.makeText(this, R.string.drive_camera_denied, Toast.LENGTH_LONG).show();
+        render();
     }
 
     private void renderEvents() {
         JSONArray ev = status.optJSONArray("events");
         if (ev == null || ev.length() == 0) return;
-        body.addView(heading(R.string.drive_activity));
+        LinearLayout c = ui.card(body);
+        c.addView(ui.heading(getString(R.string.drive_activity)));
         StringBuilder sb = new StringBuilder();
         for (int i = ev.length() - 1, n = 0; i >= 0 && n < 30; i--, n++) {
             JSONObject e = ev.optJSONObject(i);
@@ -573,6 +611,6 @@ public class MainActivity extends Activity {
             if ("error".equals(e.optString("kind"))) sb.append(" (").append(e.optString("detail")).append(')');
             sb.append('\n');
         }
-        body.addView(text(sb.toString(), 12));
+        c.addView(ui.dim(sb.toString().trim()));
     }
 }

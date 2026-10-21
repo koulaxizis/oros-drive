@@ -72,7 +72,7 @@
     <string name="drive_browse_empty">Αυτός ο φάκελος είναι άδειος.</string>
     <string name="drive_opening">Κατέβασμα του %1$s…</string>
     <string name="drive_no_app">Καμία εφαρμογή του κινητού δεν ανοίγει αυτό το είδος αρχείου.</string>
-    <string name="drive_up">↑ Πάνω</string>
+    <string name="drive_up">Πάνω</string>
     <string name="drive_refresh">Ανανέωση</string>
     <string name="drive_offline">Offline</string>
     <string name="drive_offline_keep">Διαθέσιμο offline</string>
@@ -108,12 +108,38 @@
     <string name="drive_upload_done">Στάλθηκαν %1$d στο %2$s.</string>
     <string name="drive_upload_dropped">Δεν στάλθηκαν (πολύ μεγάλα ή με όνομα που δεν δέχεται το orOS): %1$s</string>
     <string name="drive_upload_waiting">%1$d σε αναμονή (%2$s). Θα σταλούν μόλις γίνει.</string>
-    <string name="drive_camera">Αντίγραφα των νέων φωτογραφιών και βίντεο της κάμερας</string>
-    <string name="drive_camera_where">Οι νέες φωτογραφίες και τα βίντεο πηγαίνουν στο orOS › Drive › αυτό το κινητό › Camera backup. Μόνο ανέβασμα: τίποτα δεν σβήνεται από το κινητό. Βίντεο πάνω από 200 MB παραλείπονται.</string>
-    <string name="drive_camera_denied">Τα αντίγραφα της κάμερας χρειάζονται πρόσβαση στις φωτογραφίες και στα βίντεο.</string>
+    <string name="drive_camera_denied">Τα αντίγραφα φωτογραφιών χρειάζονται πρόσβαση στις φωτογραφίες και στα βίντεο.</string>
     <plurals name="drive_conflict_title">
         <item quantity="one">Κρατήθηκαν και οι δύο εκδοχές για %d αρχείο</item>
         <item quantity="other">Κρατήθηκαν και οι δύο εκδοχές για %d αρχεία</item>
     </plurals>
     <string name="drive_conflict_text">Άλλαξε και εδώ και αλλού· η άλλη εκδοχή είναι δίπλα του με τη λέξη «conflict» στο όνομα:\n%1$s</string>
+    <!-- Wave 6: εμφάνιση, φάκελοι φωτογραφιών -->
+    <string name="drive_back">Πίσω</string>
+    <string name="drive_account">Λογαριασμός</string>
+    <string name="drive_browse_sub">Άνοιγμα αρχείων, διαθέσιμα offline</string>
+    <string name="drive_media_title">Φωτογραφίες και βίντεο</string>
+    <string name="drive_media_text">Οι φάκελοι που ενεργοποιείς αντιγράφονται στο orOS › Drive › %1$s › Camera backup. Μόνο ανέβασμα: τίποτα δεν σβήνεται από το κινητό. Βίντεο πάνω από 200 MB παραλείπονται.</string>
+    <string name="drive_media_find">Εύρεση φακέλων φωτογραφιών</string>
+    <string name="drive_media_looking">Αναζήτηση φακέλων φωτογραφιών…</string>
+    <string name="drive_media_none">Δεν υπάρχουν φωτογραφίες ή βίντεο στο κινητό.</string>
+    <string name="drive_media_camera">Κάμερα</string>
+    <plurals name="drive_media_count">
+        <item quantity="one">%s αρχείο</item>
+        <item quantity="other">%s αρχεία</item>
+    </plurals>
+    <string name="drive_media_waiting">%s για ανέβασμα</string>
+    <string name="drive_media_sent">ανέβηκαν όλα</string>
+    <string name="drive_media_older">Ανέβασε και τα παλιότερα</string>
+    <plurals name="drive_media_ask">
+        <item quantity="one">Να ανέβει και το %s αρχείο που υπάρχει ήδη εδώ, ή μόνο τα νέα από τώρα;</item>
+        <item quantity="other">Να ανέβουν και οι %s φωτογραφίες και τα βίντεο που υπάρχουν ήδη εδώ, ή μόνο τα νέα από τώρα;</item>
+    </plurals>
+    <string name="drive_media_all">Όλα</string>
+    <string name="drive_media_new">Μόνο τα νέα</string>
+    <string name="drive_media_progress">%1$d από %2$d</string>
+    <plurals name="drive_media_done">
+        <item quantity="one">Ανέβηκε %d φωτογραφία ή βίντεο.</item>
+        <item quantity="other">Ανέβηκαν %d φωτογραφίες και βίντεο.</item>
+    </plurals>
 </resources>

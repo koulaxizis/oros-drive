@@ -10,11 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.text.format.Formatter;
-import android.util.TypedValue;
-import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -41,6 +37,7 @@ public class BrowseActivity extends Activity {
     private static final String ROOT = "/internal";
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private Ui ui;
     private LinearLayout body;
     private String path = ROOT;
     private boolean inOffline;                       // the Offline list is showing
@@ -50,13 +47,8 @@ public class BrowseActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         if (b != null) path = b.getString("path", ROOT);
-        ScrollView sv = new ScrollView(this);
-        body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        body.setPadding(pad, pad, pad, pad);
-        sv.addView(body);
-        setContentView(sv);
+        ui = new Ui(this, "orOS", true);
+        body = ui.body;
         load(false);
     }
 
@@ -65,18 +57,15 @@ public class BrowseActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (!ROOT.equals(path)) { path = path.substring(0, path.lastIndexOf('/')); load(false); }
+        if (inOffline) load(false);
+        else if (!ROOT.equals(path)) { path = path.substring(0, path.lastIndexOf('/')); load(false); }
         else super.onBackPressed();
-    }
-
-    private int dp(int v) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
     private void load(boolean fresh) {
         inOffline = false;
         String at = path;
-        setTitle(ROOT.equals(at) ? "orOS" : at.substring(at.lastIndexOf('/') + 1));
+        ui.setTitle(ROOT.equals(at) ? "orOS" : at.substring(at.lastIndexOf('/') + 1));
         io.execute(() -> {
             try {
                 Drive d = DriveCore.get(this);
@@ -102,55 +91,54 @@ public class BrowseActivity extends Activity {
             } catch (Exception e) {
                 main.post(() -> {
                     body.removeAllViews();
-                    body.addView(line(String.valueOf(e.getMessage()), 15));
+                    ui.card(body).addView(ui.text(String.valueOf(e.getMessage()), 15));
                 });
             }
         });
     }
 
-    private TextView line(CharSequence s, int sp) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setPadding(0, dp(10), 0, dp(10));
-        return t;
-    }
-
     private void show(List<JSONObject> items) {
         body.removeAllViews();
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        if (!ROOT.equals(path)) row.addView(button(R.string.drive_up, v -> onBackPressed()));
-        row.addView(button(R.string.drive_refresh, v -> load(true)));
-        row.addView(button(R.string.drive_offline, v -> offline()));
-        body.addView(row);
-        TextView where = line("orOS" + path.substring(ROOT.length()).replace("/", " › "), 13);
+        body.addView(ui.row(
+                ui.secondary(getString(R.string.drive_refresh), v -> load(true)),
+                ui.secondary(getString(R.string.drive_offline), v -> offline())));
+        TextView where = ui.dim("orOS" + path.substring(ROOT.length()).replace("/", " › "));
+        where.setPadding(ui.dp(4), ui.dp(10), ui.dp(4), ui.dp(6));
         body.addView(where);
-        if (items.isEmpty()) body.addView(line(getString(R.string.drive_browse_empty), 15));
+        LinearLayout c = ui.card(body);
+        c.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
+        if (items.isEmpty()) {
+            TextView t = ui.dim(getString(R.string.drive_browse_empty));
+            t.setPadding(ui.dp(12), ui.dp(12), ui.dp(12), ui.dp(12));
+            c.addView(t);
+        }
         for (JSONObject i : items) {
             boolean dir = i.optBoolean("dir");
             String name = i.optString("name");
             String p = i.optString("path");
-            CharSequence label = (dir ? "📁 " : "📄 ") + name
-                    + (dir ? "" : "  ·  " + Formatter.formatShortFileSize(this, i.optLong("size")))
-                    + (i.optBoolean("pinned") ? "  ·  " + getString(R.string.drive_offline_mark) : "");
-            TextView t = line(label, 16);
-            t.setBackgroundResource(android.R.drawable.list_selector_background);
-            t.setOnClickListener(v -> {
+            String sub = (dir ? "" : Formatter.formatShortFileSize(this, i.optLong("size")))
+                    + (i.optBoolean("pinned") ? (dir ? "" : "  ·  ") + getString(R.string.drive_offline_mark) : "");
+            LinearLayout t = ui.item(dir ? "📁" : icon(name), name, sub, v -> {
                 if (dir) { path = p; load(false); }
                 else open(i);
             });
             t.setOnLongClickListener(v -> { pinMenu(p, name, i.optBoolean("pinned")); return true; });
-            body.addView(t);
+            c.addView(t);
         }
     }
 
-    private Button button(int res, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(res);
-        b.setAllCaps(false);
-        b.setOnClickListener(l);
-        return b;
+    /** A plain icon by kind of file. */
+    private static String icon(String name) {
+        String n = name.toLowerCase(Locale.ROOT);
+        String ext = n.contains(".") ? n.substring(n.lastIndexOf('.') + 1) : "";
+        switch (ext) {
+            case "jpg": case "jpeg": case "png": case "gif": case "webp": case "heic": case "svg": return "🖼";
+            case "mp4": case "mov": case "mkv": case "webm": case "3gp": return "🎬";
+            case "mp3": case "m4a": case "ogg": case "opus": case "flac": case "wav": return "🎵";
+            case "pdf": return "📕";
+            case "zip": case "7z": case "rar": case "gz": case "tar": return "🗜";
+            default: return "📄";
+        }
     }
 
     /** Keep offline / remove from offline for one path. Only a pin
@@ -200,17 +188,16 @@ public class BrowseActivity extends Activity {
     private void showOffline(List<String> pins) {
         inOffline = true;
         body.removeAllViews();
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(button(R.string.drive_up, v -> load(false)));
-        body.addView(row);
-        setTitle(R.string.drive_offline);
-        body.addView(line(getString(pins.isEmpty() ? R.string.drive_offline_none : R.string.drive_offline_hint), 13));
+        ui.setTitle(getString(R.string.drive_offline));
+        TextView hint = ui.dim(getString(pins.isEmpty() ? R.string.drive_offline_none : R.string.drive_offline_hint));
+        hint.setPadding(ui.dp(4), 0, ui.dp(4), ui.dp(8));
+        body.addView(hint);
+        if (pins.isEmpty()) return;
+        LinearLayout c = ui.card(body);
+        c.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
         for (String p : pins) {
             String name = p.substring(p.lastIndexOf('/') + 1);
-            TextView t = line("orOS" + p.substring(ROOT.length()).replace("/", " › "), 16);
-            t.setBackgroundResource(android.R.drawable.list_selector_background);
-            t.setOnClickListener(v -> io.execute(() -> {
+            LinearLayout t = ui.item("📌", name, "orOS" + p.substring(ROOT.length(), p.lastIndexOf('/')).replace("/", " › "), v -> io.execute(() -> {
                 try {
                     JSONObject st = new JSONObject(DriveCore.get(this).diskStat(p));
                     main.post(() -> {
@@ -222,7 +209,7 @@ public class BrowseActivity extends Activity {
                 }
             }));
             t.setOnLongClickListener(v -> { pinMenu(p, name, true); return true; });
-            body.addView(t);
+            c.addView(t);
         }
     }
 
