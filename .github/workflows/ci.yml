@@ -35,6 +35,7 @@ jobs:
           go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/ ./app/
       - name: Smoke test of the real app
         shell: bash
+        timeout-minutes: 5
         run: |
           go build -o smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/orosdrive
           packaging/smoke.sh smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }}
