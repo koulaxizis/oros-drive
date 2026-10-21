@@ -57,6 +57,7 @@ func cmdRun(args []string) error {
 	defer ui.Close()
 	go s.RefreshAccount()
 	go s.Run(ctx)
+	go s.CheckUpdates(ctx)
 
 	st := s.Status()
 	if !*background && (!st.SignedIn || !st.Unlocked || len(st.Settings.Folders) == 0) {

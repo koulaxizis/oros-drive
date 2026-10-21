@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: koulaxizis.orOSDrive
+PackageVersion: @VERSION@
+PackageLocale: en-US
+Publisher: orOS
+PublisherUrl: https://useoros.online
+PublisherSupportUrl: https://github.com/koulaxizis/oros-drive/issues
+PrivacyUrl: https://useoros.online/privacy.html
+PackageName: orOS Drive
+PackageUrl: https://useoros.online/download/
+License: MIT
+LicenseUrl: https://github.com/koulaxizis/oros-drive/blob/main/LICENSE
+ShortDescription: Mirror folders of this computer into your end-to-end encrypted orOS Vault.
+Description: |-
+  orOS Drive mirrors chosen folders of this computer both ways into the orOS Vault, which lives
+  end-to-end encrypted in your own Dropbox: Dropbox sees neither file names nor contents. It can also
+  show the whole orOS disk as a folder in File Explorer. Free forever, MIT.
+Moniker: oros-drive
+Tags:
+- backup
+- encryption
+- sync
+- privacy
+- dropbox
+ReleaseNotesUrl: https://github.com/koulaxizis/oros-drive/releases/tag/v@VERSION@
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

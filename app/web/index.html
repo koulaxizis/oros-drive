@@ -22,6 +22,10 @@
 </header>
 
 <main>
+  <section id="sec-update" class="card" hidden>
+    <p id="update-text"></p>
+    <a id="update-link" class="btn primary" target="_blank" rel="noopener" data-t="updateBtn"></a>
+  </section>
   <section id="sec-login" class="card" hidden>
     <h2 data-t="loginTitle"></h2>
     <p data-t="loginText"></p>
@@ -95,6 +99,7 @@
       <label><span data-t="lang"></span>
         <select id="p-lang"><option value="" data-t="auto"></option><option value="en">English</option><option value="el">Ελληνικά</option></select></label>
       <label class="check"><input id="p-autostart" type="checkbox"><span data-t="autostart"></span></label>
+      <label class="check"><input id="p-update" type="checkbox"><span data-t="updateCheck"></span></label>
       <button class="btn primary" data-t="save"></button>
       <p id="prefs-msg" class="note"></p>
     </form>

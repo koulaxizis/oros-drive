@@ -29,6 +29,8 @@ main { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 16px
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .btn.danger { color: var(--bad); }
 .btn.small { padding: 3px 10px; font-size: 13px; }
+a.btn { display: inline-block; text-decoration: none; }
+#sec-update p { margin-top: 0; }
 input, select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; min-width: 0; }
 .row { display: flex; gap: 8px; align-items: center; }
 .row.wrap { flex-wrap: wrap; }

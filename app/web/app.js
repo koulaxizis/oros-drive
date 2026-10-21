@@ -46,6 +46,8 @@ var T = {
     ev: { upload: "Uploaded", download: "Downloaded", "delete-local": "Moved to trash", "delete-remote": "Deleted in orOS", "conflict-copy": "Conflict copy", error: "Error" },
     settings: "Settings", device: "This computer's name in orOS", maxFile: "Largest file to upload (MB)",
     maxDeletes: "Ask before deleting more than (files)", lang: "Language", autostart: "Start at login", save: "Save", saved: "Saved.",
+    updateCheck: "Tell me about new versions (asks GitHub once a day)",
+    updateText: "orOS Drive {v} is available. Install it over this one: your folders and settings stay.", updateBtn: "Download page",
     openOros: "Open orOS", openTrash: "Open the trash", lock: "Forget the vault key", logout: "Sign out", quit: "Quit orOS Drive",
     lockAsk: "Forget the vault key? The mirror stops until you type the passphrase again.",
     logoutAsk: "Sign out of Dropbox? The mirror stops. Files stay where they are.",
@@ -98,6 +100,8 @@ var T = {
     ev: { upload: "Ανέβηκε", download: "Κατέβηκε", "delete-local": "Στον κάδο", "delete-remote": "Σβήστηκε στο orOS", "conflict-copy": "Αντίγραφο σύγκρουσης", error: "Σφάλμα" },
     settings: "Ρυθμίσεις", device: "Όνομα αυτού του υπολογιστή στο orOS", maxFile: "Μεγαλύτερο αρχείο για ανέβασμα (MB)",
     maxDeletes: "Ερώτηση πριν σβηστούν πάνω από (αρχεία)", lang: "Γλώσσα", autostart: "Εκκίνηση με τη σύνδεση", save: "Αποθήκευση", saved: "Αποθηκεύτηκε.",
+    updateCheck: "Ειδοποίηση για νέες εκδόσεις (ρωτά το GitHub μία φορά τη μέρα)",
+    updateText: "Υπάρχει νέα έκδοση, το orOS Drive {v}. Εγκατέστησέ τη πάνω από αυτή: οι φάκελοι και οι ρυθμίσεις μένουν.", updateBtn: "Σελίδα λήψης",
     openOros: "Άνοιγμα orOS", openTrash: "Άνοιγμα κάδου", lock: "Ξέχνα το κλειδί του Vault", logout: "Αποσύνδεση", quit: "Έξοδος από το orOS Drive",
     lockAsk: "Να ξεχαστεί το κλειδί του Vault; Το mirror σταματά μέχρι να γράψεις ξανά το συνθηματικό.",
     logoutAsk: "Αποσύνδεση από το Dropbox; Το mirror σταματά. Τα αρχεία μένουν όπου είναι.",
@@ -184,10 +188,23 @@ function render() {
     $("p-maxdel").value = s.settings.maxDeletes || 50;
     $("p-lang").value = s.settings.lang || "";
     $("p-autostart").checked = !!s.autostart;
+    $("p-update").checked = !s.settings.noUpdateCheck;
   }
   $("p-device").disabled = (s.settings.folders || []).length > 0;
   renderDisk();
+  renderUpdate();
   $("about").textContent = t("about", { v: s.version, w: s.secretsIn === "keychain" ? t("whereKeychain") : t("whereFile") });
+}
+
+// A newer release (UPD-1): only a link to its page on GitHub.
+var RELEASES = "https://github.com/koulaxizis/oros-drive/releases/tag/";
+function renderUpdate() {
+  var u = state.update;
+  var ok = !!u && typeof u.url === "string" && u.url.indexOf(RELEASES) === 0;
+  $("sec-update").hidden = !ok;
+  if (!ok) return;
+  $("update-text").textContent = t("updateText", { v: u.version });
+  $("update-link").href = u.url;
 }
 
 var editingDisk = false;
@@ -374,7 +391,8 @@ document.addEventListener("DOMContentLoaded", function () {
     ev.preventDefault();
     var body = {
       maxFileMB: parseInt($("p-maxfile").value, 10), maxDeletes: parseInt($("p-maxdel").value, 10),
-      lang: $("p-lang").value, autostart: $("p-autostart").checked
+      lang: $("p-lang").value, autostart: $("p-autostart").checked,
+      updateCheck: $("p-update").checked
     };
     if (!$("p-device").disabled) body.device = $("p-device").value;
     api("prefs", body).then(function () { editingPrefs = false; msg("prefs-msg", t("saved")); refresh(); })
