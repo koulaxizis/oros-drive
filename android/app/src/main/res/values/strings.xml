@@ -74,7 +74,7 @@
     <string name="drive_browse_empty">This folder is empty.</string>
     <string name="drive_opening">Downloading %1$s…</string>
     <string name="drive_no_app">No app on this phone opens this kind of file.</string>
-    <string name="drive_up">↑ Up</string>
+    <string name="drive_up">Up</string>
     <string name="drive_refresh">Refresh</string>
     <string name="drive_offline">Offline</string>
     <string name="drive_offline_keep">Keep offline</string>
@@ -110,12 +110,38 @@
     <string name="drive_upload_done">%1$d sent to %2$s.</string>
     <string name="drive_upload_dropped">Could not be sent (too big, or a name orOS cannot hold): %1$s</string>
     <string name="drive_upload_waiting">%1$d waiting (%2$s). They go as soon as possible.</string>
-    <string name="drive_camera">Back up new photos and videos from the camera</string>
-    <string name="drive_camera_where">New photos and videos go to orOS › Drive › this phone › Camera backup. Only uploads: nothing on the phone is deleted. Videos over 200 MB are left out.</string>
-    <string name="drive_camera_denied">Camera backup needs access to photos and videos.</string>
+    <string name="drive_camera_denied">Photo backup needs access to photos and videos.</string>
     <plurals name="drive_conflict_title">
         <item quantity="one">Both versions kept of %d file</item>
         <item quantity="other">Both versions kept of %d files</item>
     </plurals>
     <string name="drive_conflict_text">It changed here and elsewhere; the other version is next to it with \"conflict\" in its name:\n%1$s</string>
+    <!-- Wave 6: the look, photo folders -->
+    <string name="drive_back">Back</string>
+    <string name="drive_account">Account</string>
+    <string name="drive_browse_sub">Open files, keep them offline</string>
+    <string name="drive_media_title">Photos and videos</string>
+    <string name="drive_media_text">The folders you turn on are copied to orOS › Drive › %1$s › Camera backup. Upload only: nothing on the phone is deleted. Videos over 200 MB are left out.</string>
+    <string name="drive_media_find">Find photo folders</string>
+    <string name="drive_media_looking">Looking for photo folders…</string>
+    <string name="drive_media_none">No photos or videos on this phone.</string>
+    <string name="drive_media_camera">Camera</string>
+    <plurals name="drive_media_count">
+        <item quantity="one">%s item</item>
+        <item quantity="other">%s items</item>
+    </plurals>
+    <string name="drive_media_waiting">%s to upload</string>
+    <string name="drive_media_sent">all uploaded</string>
+    <string name="drive_media_older">Also upload the older ones</string>
+    <plurals name="drive_media_ask">
+        <item quantity="one">Upload the %s photo or video already here too, or only new ones from now on?</item>
+        <item quantity="other">Upload the %s photos and videos already here too, or only new ones from now on?</item>
+    </plurals>
+    <string name="drive_media_all">All of them</string>
+    <string name="drive_media_new">Only new ones</string>
+    <string name="drive_media_progress">%1$d of %2$d</string>
+    <plurals name="drive_media_done">
+        <item quantity="one">%d photo or video backed up.</item>
+        <item quantity="other">%d photos and videos backed up.</item>
+    </plurals>
 </resources>

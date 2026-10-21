@@ -13,8 +13,15 @@ vault format and the same rules (VD-1, VD-4, VD-H, mirror Base, trash).
   the background and stays up to date; "Offline" lists what is kept.
 - Share › orOS Drive from any app: pick a folder, the files upload in
   the background with a progress notification. Nothing is replaced.
-- Camera backup (optional): new photos and videos in DCIM go to
-  Drive/<phone>/Camera backup. Upload only; nothing on the phone is deleted.
+- Photos and videos (optional): the phone's media folders are found in
+  MediaStore (camera, Screenshots, WhatsApp Images, ...) and each can be
+  turned on, with or without what is in it already. The camera (all of
+  DCIM) goes to Drive/<phone>/Camera backup, other folders to a subfolder
+  of it by name, in batches with one manifest write each (`PutNewMany`).
+  Upload only; nothing on the phone is deleted.
+- The look follows orOS (style.css, Adwaita skin, light or dark with the
+  phone): `Ui.java` builds every screen, laid out around the system bars
+  (Android 15 draws apps under them).
 - A notification names files kept in both versions after a conflict.
 
 ## Build

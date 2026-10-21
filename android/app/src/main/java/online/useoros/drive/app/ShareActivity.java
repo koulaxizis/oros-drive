@@ -9,11 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
-import android.util.TypedValue;
-import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,21 +42,16 @@ public class ShareActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<File> items = new ArrayList<>();
     private volatile boolean queued;
+    private Ui ui;
     private LinearLayout body;
     private String path = ROOT;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        setTitle(R.string.drive_share_title);
-        ScrollView sv = new ScrollView(this);
-        body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        body.setPadding(pad, pad, pad, pad);
-        sv.addView(body);
-        setContentView(sv);
-        body.addView(line(getString(R.string.drive_share_copying), 15));
+        ui = new Ui(this, getString(R.string.drive_share_title), true);
+        body = ui.body;
+        body.addView(ui.dim(getString(R.string.drive_share_copying)));
         path = getSharedPreferences(DriveWorker.PREFS, Context.MODE_PRIVATE).getString("share-dest", ROOT);
         Intent in = getIntent();
         io.execute(() -> {
@@ -77,7 +68,7 @@ public class ShareActivity extends Activity {
             } catch (Exception e) {
                 main.post(() -> {
                     body.removeAllViews();
-                    body.addView(line(String.valueOf(e.getMessage()), 15));
+                    ui.card(body).addView(ui.text(String.valueOf(e.getMessage()), 15));
                 });
             }
         });
@@ -89,10 +80,6 @@ public class ShareActivity extends Activity {
         io.shutdown();
         // A share that was not sent leaves nothing behind.
         if (!queued) for (File f : items) Outbox.delete(f);
-    }
-
-    private int dp(int v) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
     private void take(Intent in) throws Exception {
@@ -116,29 +103,14 @@ public class ShareActivity extends Activity {
         }
     }
 
-    private TextView line(CharSequence s, int sp) {
-        TextView t = new TextView(this);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setPadding(0, dp(10), 0, dp(10));
-        return t;
-    }
-
-    private Button button(CharSequence label, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setOnClickListener(l);
-        return b;
-    }
-
     private void locked() {
         body.removeAllViews();
-        body.addView(line(getString(R.string.drive_share_locked), 15));
-        body.addView(button(getString(R.string.drive_title), v -> {
+        LinearLayout c = ui.card(body);
+        c.addView(ui.text(getString(R.string.drive_share_locked), 15));
+        c.addView(ui.row(ui.primary(getString(R.string.drive_title), v -> {
             startActivity(new Intent(this, MainActivity.class));
             finish();
-        }));
+        })));
     }
 
     /** Folder picker: the subfolders of at, Up, and "Upload here". */
@@ -162,20 +134,20 @@ public class ShareActivity extends Activity {
 
     private void show(List<JSONObject> dirs) {
         body.removeAllViews();
-        body.addView(line(getResources().getQuantityString(R.plurals.drive_share_count, items.size(), items.size()), 15));
-        body.addView(line(UploadWorker.where(path), 13));
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        if (!ROOT.equals(path)) row.addView(button(getString(R.string.drive_up), v -> load(path.substring(0, path.lastIndexOf('/')))));
-        row.addView(button(getString(R.string.drive_share_here), v -> send()));
-        body.addView(row);
-        for (JSONObject o : dirs) {
-            TextView t = line("📁 " + o.optString("name"), 16);
-            t.setBackgroundResource(android.R.drawable.list_selector_background);
-            String p = o.optString("path");
-            t.setOnClickListener(v -> load(p));
-            body.addView(t);
+        body.addView(ui.text(getResources().getQuantityString(R.plurals.drive_share_count, items.size(), items.size()), 15));
+        TextView where = ui.dim(UploadWorker.where(path));
+        where.setPadding(0, ui.dp(2), 0, ui.dp(8));
+        body.addView(where);
+        LinearLayout c = ui.card(body);
+        c.setPadding(ui.dp(4), ui.dp(4), ui.dp(4), ui.dp(4));
+        if (!ROOT.equals(path)) {
+            c.addView(ui.item("↩", getString(R.string.drive_up), null, v -> load(path.substring(0, path.lastIndexOf('/')))));
         }
+        for (JSONObject o : dirs) {
+            String p = o.optString("path");
+            c.addView(ui.item("📁", o.optString("name"), null, v -> load(p)));
+        }
+        body.addView(ui.row(ui.primary(getString(R.string.drive_share_here), v -> send())));
     }
 
     private void send() {

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- orOS's default look (style.css, Adwaita skin, dark). -->
+<resources>
+    <color name="bg">#1b1b1b</color>
+    <color name="panel">#2a2a2e</color>
+    <color name="text">#ffffff</color>
+    <color name="dim">#a8a8ac</color>
+    <color name="accent">#3584e4</color>
+    <color name="accent_soft">#383584e4</color>
+    <color name="border">#3a3a3f</color>
+    <color name="danger">#ff7b63</color>
+</resources>

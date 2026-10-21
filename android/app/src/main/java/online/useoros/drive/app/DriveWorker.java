@@ -43,10 +43,12 @@ public class DriveWorker extends Worker {
                 conflicts(getApplicationContext(), d);
             } finally {
                 // Offline files (wave 3): what is pinned and not here yet,
-                // and camera backup (wave 4), under the same Wi-Fi /
+                // and photo backup (waves 4, 6), under the same Wi-Fi /
                 // charging conditions.
                 try { d.diskSyncPins(); } catch (Exception ignored) { }
-                try { CameraUploader.run(getApplicationContext(), d); } catch (Exception ignored) { }
+                try {
+                    CameraUploader.told(getApplicationContext(), CameraUploader.run(getApplicationContext(), d, this::isStopped));
+                } catch (Exception ignored) { }
             }
             return Result.success();
         } catch (Exception e) {

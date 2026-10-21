@@ -151,6 +151,18 @@ func TestSharedAndCameraUploads(t *testing.T) {
 	if _, err := d.DiskPutNew(cam, "x.tmp~", local); err == nil || err.Error() != "bad-name" {
 		t.Fatal(err)
 	}
+	// Many at once (camera backup): one result per file, in order.
+	in, _ := json.Marshal([]map[string]string{
+		{"dir": cam, "name": "IMG_1.jpg", "local": local},
+		{"dir": cam + "/Screenshots", "name": "s.png", "local": local},
+		{"dir": cam, "name": "x.tmp~", "local": local},
+	})
+	js, err := d.DiskPutNewMany(string(in))
+	var many []struct{ Path, Error string }
+	json.Unmarshal([]byte(js), &many)
+	if err != nil || len(many) != 3 || many[0].Path != cam+"/IMG_1.jpg" || many[1].Path != cam+"/Screenshots/s.png" || many[2].Error != "bad-name" {
+		t.Fatal(js, err)
+	}
 	// The camera folder's name is not for a mirrored folder.
 	if _, err := d.AddFolder("content://tree/camera", "camera BACKUP"); err == nil || err.Error() != "choose another name" {
 		t.Fatal("a mirrored folder took the camera folder's name")
