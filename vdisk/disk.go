@@ -61,6 +61,7 @@ type Info struct {
 	Hash   string    `json:"hash,omitempty"`
 	Mime   string    `json:"mime,omitempty"`
 	Cached bool      `json:"cached,omitempty"` // downloaded on this device
+	Pinned bool      `json:"pinned,omitempty"` // kept offline (a pin or under one)
 }
 
 // Disk is the vault seen as a file system. Safe for concurrent use.
@@ -76,7 +77,8 @@ type Disk struct {
 	fetched time.Time
 	dirs    map[string]bool // folders made here that hold no file yet
 	scratch map[string]scratchFile
-	fetchMu sync.Mutex // one download at a time per disk
+	pins    map[string]bool // offline paths (pins.go); nil until read
+	fetchMu sync.Mutex      // one download at a time per disk
 	now     func() time.Time
 }
 
@@ -263,10 +265,12 @@ func (d *Disk) Stat(p string) (Info, error) {
 		return d.scratchInfo(p, s), nil
 	}
 	if e, ok := r.Files[p]; ok {
-		return d.info(p, e), nil
+		i := d.info(p, e)
+		i.Pinned = d.pinnedLocked(p)
+		return i, nil
 	}
 	if d.isDir(r, p) {
-		return Info{Path: p, Name: path.Base(p), Dir: true}, nil
+		return Info{Path: p, Name: path.Base(p), Dir: true, Pinned: d.pinnedLocked(p)}, nil
 	}
 	return Info{}, ErrNotExist
 }
@@ -322,6 +326,7 @@ func (d *Disk) List(dir string) ([]Info, error) {
 	}
 	out := make([]Info, 0, len(seen))
 	for _, i := range seen {
+		i.Pinned = d.pinnedLocked(i.Path)
 		out = append(out, i)
 	}
 	sort.Slice(out, func(a, b int) bool {
@@ -478,9 +483,14 @@ func (d *Disk) fetchEntry(e vault.Entry) (string, error) {
 }
 
 // prune drops the least recently used cache files above MaxCache,
-// never keep (just fetched). An open file stays readable on Linux and
-// Android after its name is gone.
+// never keep (just fetched) and never an offline file (pins.go, which
+// do not count toward MaxCache either). An open file stays readable on
+// Linux and Android after its name is gone.
 func (d *Disk) prune(keep string) {
+	pinned, known := d.pinnedHashes()
+	if !known {
+		return
+	}
 	dir := filepath.Join(d.CacheDir, "objects")
 	ents, err := os.ReadDir(dir)
 	if err != nil {
@@ -495,7 +505,7 @@ func (d *Disk) prune(keep string) {
 	var total int64
 	for _, e := range ents {
 		fi, err := e.Info()
-		if err != nil || e.IsDir() || strings.HasSuffix(e.Name(), ".part") {
+		if err != nil || e.IsDir() || strings.HasSuffix(e.Name(), ".part") || pinned[e.Name()] {
 			continue
 		}
 		files = append(files, f{filepath.Join(dir, e.Name()), fi.Size(), fi.ModTime()})
@@ -527,11 +537,36 @@ func (d *Disk) CacheSize() int64 {
 	return total
 }
 
-// ClearCache removes every downloaded copy (they come back on open).
+// ClearCache removes every downloaded copy (they come back on open)
+// except offline files.
 func (d *Disk) ClearCache() error {
+	if len(d.Pins()) == 0 {
+		d.fetchMu.Lock()
+		defer d.fetchMu.Unlock()
+		return os.RemoveAll(filepath.Join(d.CacheDir, "objects"))
+	}
+	if err := d.Refresh(true); err != nil {
+		return err // what the pins hold is unknown: keep everything
+	}
+	pinned, _ := d.pinnedHashes()
 	d.fetchMu.Lock()
 	defer d.fetchMu.Unlock()
-	return os.RemoveAll(filepath.Join(d.CacheDir, "objects"))
+	dir := filepath.Join(d.CacheDir, "objects")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range ents {
+		if !pinned[e.Name()] {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // TempFile is a scratch file in the cache folder for a write in

@@ -76,6 +76,14 @@
     <string name="drive_no_app">No app on this phone opens this kind of file.</string>
     <string name="drive_up">↑ Up</string>
     <string name="drive_refresh">Refresh</string>
+    <string name="drive_offline">Offline</string>
+    <string name="drive_offline_keep">Keep offline</string>
+    <string name="drive_offline_drop">Remove from offline</string>
+    <string name="drive_offline_mark">offline</string>
+    <string name="drive_offline_none">Nothing is kept offline yet. Press and hold a file or folder to keep it on this phone.</string>
+    <string name="drive_offline_added">%1$s is kept offline. It downloads in the background and stays up to date.</string>
+    <string name="drive_offline_by_folder">This is kept offline with its folder. To stop that, remove the folder in Offline.</string>
+    <string name="drive_offline_hint">Kept on this phone and updated when it changes elsewhere. Tap to open, press and hold to remove.</string>
     <string name="dav_url">Use the full https:// address of your server, with no password in it.</string>
     <string name="dav_missing">Fill in the user name and the app password.</string>
     <string name="dav_unreachable">The server did not answer. Check the address and the connection.</string>

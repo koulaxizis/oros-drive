@@ -9,6 +9,8 @@ vault format and the same rules (VD-1, VD-4, VD-H, mirror Base, trash).
 - Folders on the phone are backed up to orOS on a schedule (WorkManager).
 - The orOS disk shows up in the phone's Files app (DocumentsProvider,
   "orOS Drive"), and the app has its own browser.
+- Press and hold a file or folder to keep it offline: it downloads in
+  the background and stays up to date; "Offline" lists what is kept.
 
 ## Build
 

@@ -158,3 +158,36 @@ func (d *Drive) DiskClearCache() error {
 	}
 	return k.ClearCache()
 }
+
+// DiskPin keeps a file or folder on this phone (on) or lets it go back
+// to the ordinary cache (off). The files arrive with DiskSyncPins.
+func (d *Drive) DiskPin(path string, on bool) error {
+	k, err := d.disk()
+	if err != nil {
+		return err
+	}
+	return diskErr(k.SetPin(path, on))
+}
+
+// DiskPins returns the offline paths as a JSON array.
+func (d *Drive) DiskPins() (string, error) {
+	k, err := d.disk()
+	if err != nil {
+		return "", err
+	}
+	return asJSON(k.Pins()), nil
+}
+
+// DiskSyncPins downloads every offline file not on the phone yet (the
+// worker runs it after each pass) and returns a vdisk.PinStatus as JSON.
+func (d *Drive) DiskSyncPins() (string, error) {
+	k, err := d.disk()
+	if err != nil {
+		return "", err
+	}
+	st, err := k.SyncPins()
+	if err != nil {
+		return "", diskErr(err)
+	}
+	return asJSON(st), nil
+}
