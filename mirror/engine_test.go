@@ -652,3 +652,38 @@ func TestConflictNameMatchesVaultJS(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A different cloud (Dropbox to WebDAV, another server) is a first
+// sync: files synced with the old cloud and missing in the new one
+// are uploaded, never deleted.
+func TestCloudChangeNeverDeletes(t *testing.T) {
+	e := newEnv(t)
+	a := e.device("a")
+	la := a.folder("docs", R)
+	write(t, la, "x.txt", "x")
+	write(t, la, "y.txt", "y")
+	a.sync()
+	if changed, err := NoteCloud(a.StateDir, "dropbox"); changed || err != nil {
+		t.Fatal("same cloud read as a change", err)
+	}
+
+	other := newEnv(t)
+	other.put(R+"/y.txt", "y")
+	a.Vault = vault.New(other.store, nil).WithKeys(keys)
+	if changed, err := NoteCloud(a.StateDir, "webdav:chris@https://cloud.example.com/remote.php/dav/files/chris/orOS"); !changed || err != nil {
+		t.Fatal("new cloud not noticed", err)
+	}
+	r := a.sync()
+	if r.DeletedLocal+r.DeletedRemote != 0 || r.Uploaded != 1 {
+		t.Fatalf("%+v", r)
+	}
+	if _, ok := read(t, la, "x.txt"); !ok {
+		t.Fatal("x.txt deleted")
+	}
+	if c := other.cloud(); c[R+"/x.txt"] != "x" || c[R+"/y.txt"] != "y" {
+		t.Fatalf("cloud %v", c)
+	}
+	if changed, _ := NoteCloud(a.StateDir, "webdav:chris@https://cloud.example.com/remote.php/dav/files/chris/orOS"); changed {
+		t.Fatal("noticed twice")
+	}
+}

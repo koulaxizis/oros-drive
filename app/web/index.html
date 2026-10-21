@@ -30,6 +30,20 @@
     <h2 data-t="loginTitle"></h2>
     <p data-t="loginText"></p>
     <button id="btn-login" class="btn primary" data-t="loginBtn"></button>
+    <h3 data-t="davTitle"></h3>
+    <p class="note" data-t="davText"></p>
+    <form id="form-dav" class="add">
+      <label><span data-t="davUrl"></span><input id="dav-url" type="url" inputmode="url" autocomplete="url" placeholder="https://cloud.example.com" required></label>
+      <label><span data-t="davDir"></span><input id="dav-dir" placeholder="/orOS"></label>
+      <button type="button" id="btn-nextcloud" class="btn" data-t="davNextcloud"></button>
+      <details id="dav-more">
+        <summary data-t="davOther"></summary>
+        <p class="note" data-t="davOtherText"></p>
+        <label><span data-t="davUser"></span><input id="dav-user" autocomplete="username"></label>
+        <label><span data-t="davPass"></span><input id="dav-pass" type="password" autocomplete="current-password"></label>
+        <button id="btn-dav" class="btn" data-t="davConnect"></button>
+      </details>
+    </form>
     <p id="login-msg" class="note"></p>
   </section>
 

@@ -22,6 +22,7 @@ import (
 	"github.com/koulaxizis/oros-drive/mirror"
 	"github.com/koulaxizis/oros-drive/vault"
 	"github.com/koulaxizis/oros-drive/vdisk"
+	"github.com/koulaxizis/oros-drive/webdav"
 )
 
 // OrosURL opens orOS in the browser.
@@ -30,6 +31,7 @@ const OrosURL = "https://useoros.online/"
 // Status is what the settings page and the tray show.
 type Status struct {
 	SignedIn  bool                  `json:"signedIn"`
+	Provider  string                `json:"provider,omitempty"` // "dropbox" or "webdav"
 	Account   string                `json:"account,omitempty"`
 	Unlocked  bool                  `json:"unlocked"`
 	NeedsKey  string                `json:"needsKey,omitempty"` // "locked", "empty" (no vault yet), "reset"
@@ -56,7 +58,7 @@ type FolderInfo struct {
 // Service owns the settings, the secrets, the engine and the loop.
 type Service struct {
 	Version string
-	// Store overrides Dropbox (tests).
+	// Store overrides the cloud (tests).
 	Store vault.Store
 	// Folders serves mirrored folders that are not directories (Android:
 	// folders granted through the system picker, Pair.Local holding the
@@ -66,6 +68,7 @@ type Service struct {
 	mu       sync.Mutex
 	settings *config.Settings
 	client   *dropbox.Client
+	dav      *webdav.Client // instead of client: a WebDAV / Nextcloud folder
 	account  string
 	vkey     *secret.VaultKey
 	engine   *mirror.Engine
@@ -103,6 +106,8 @@ func NewService(version string) (*Service, error) {
 		// A vault in a local folder instead of Dropbox: tests, and
 		// trying the app on a copied vault.
 		s.Store, s.account = vault.NewDirStore(d), "local folder "+d
+	} else if c, pass, err := secret.LoadWebDAV(); err == nil {
+		s.dav, s.account = webdav.New(c, pass), c.Account()
 	} else if t, err := secret.LoadTokens(); err == nil {
 		s.client = s.newClient(t)
 	}
@@ -122,10 +127,33 @@ func (s *Service) store() vault.Store {
 	if s.Store != nil {
 		return s.Store
 	}
+	if s.dav != nil {
+		return s.dav
+	}
 	if s.client == nil {
 		return nil
 	}
 	return s.client
+}
+
+func (s *Service) provider() string {
+	switch {
+	case s.Store != nil:
+		return ""
+	case s.dav != nil:
+		return "webdav"
+	case s.client != nil:
+		return "dropbox"
+	}
+	return ""
+}
+
+// cloudID names the cloud the mirror state belongs to (mirror.NoteCloud).
+func (s *Service) cloudID() string {
+	if s.Store == nil && s.dav != nil {
+		return s.dav.Conf.CloudID()
+	}
+	return "dropbox"
 }
 
 // OnChange registers a callback for status changes (the tray).
@@ -165,7 +193,7 @@ func (s *Service) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := Status{
-		SignedIn: s.store() != nil, Account: s.account, Unlocked: s.vkey != nil,
+		SignedIn: s.store() != nil, Provider: s.provider(), Account: s.account, Unlocked: s.vkey != nil,
 		NeedsKey: s.needsKey, Syncing: s.syncing, Paused: s.settings.Paused,
 		Error: s.lastErr, LastSync: s.lastSync, Last: s.last,
 		Events: append([]mirror.Event{}, s.events...), Settings: *s.settings,
@@ -234,9 +262,10 @@ func (s *Service) signedIn(c *dropbox.Client, t dropbox.Tokens) error {
 		return err
 	}
 	a, err := c.CurrentAccount()
+	_ = secret.DeleteWebDAV()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.client = s.newClient(t)
+	s.client, s.dav = s.newClient(t), nil
 	if err == nil {
 		s.account = a.Email
 	}
@@ -249,22 +278,111 @@ func (s *Service) signedIn(c *dropbox.Client, t dropbox.Tokens) error {
 	return nil
 }
 
+// ErrSignedIn: sign out before connecting another cloud.
+var ErrSignedIn = errors.New("dav-connected")
+
+// ConnectWebDAV checks a WebDAV server (webdav.Probe) and, only when it
+// keeps every promise the vault needs, makes it this computer's cloud.
+// Nothing is saved on failure; the error is a webdav.Err… code.
+func (s *Service) ConnectWebDAV(rawURL, user, pass, dir string) error {
+	s.mu.Lock()
+	in := s.store() != nil
+	s.mu.Unlock()
+	if in {
+		return ErrSignedIn
+	}
+	conf, err := webdav.NormConf(rawURL, user, dir)
+	if err != nil {
+		return err
+	}
+	c, err := webdav.Connect(conf, pass)
+	if err != nil {
+		return err
+	}
+	if err := s.davSignedIn(c); err != nil {
+		return err
+	}
+	s.notify()
+	s.Kick()
+	return nil
+}
+
+// StartNextcloud begins a Nextcloud sign-in (Login Flow v2) and
+// returns the server's page to open; Status().Login tells how it went.
+func (s *Service) StartNextcloud(rawURL, dir string) (string, error) {
+	s.mu.Lock()
+	in := s.store() != nil
+	s.mu.Unlock()
+	if in {
+		return "", ErrSignedIn
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 21*time.Minute)
+	l, err := webdav.StartNextcloud(ctx, rawURL, dir)
+	if err != nil {
+		cancel()
+		return "", err
+	}
+	s.mu.Lock()
+	s.login = "waiting"
+	s.mu.Unlock()
+	go func() {
+		defer cancel()
+		c, err := l.Wait(ctx)
+		if err == nil {
+			err = s.davSignedIn(c)
+		}
+		s.mu.Lock()
+		if code := webdav.Code(err); code != "" {
+			s.login = code
+		} else if err != nil {
+			s.login = err.Error()
+		} else {
+			s.login = ""
+		}
+		s.mu.Unlock()
+		s.notify()
+		s.Kick()
+	}()
+	return l.URL, nil
+}
+
+func (s *Service) davSignedIn(c *webdav.Client) error {
+	if err := secret.SaveWebDAV(c.Conf, c.Pass); err != nil {
+		return err
+	}
+	_ = secret.DeleteTokens()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dav, s.client, s.account = c, nil, c.Conf.Account()
+	// A key from another cloud is not this vault's key.
+	if s.vkey != nil && s.vkey.Account != s.account {
+		s.vkey = nil
+		_ = secret.DeleteVaultKey()
+	}
+	s.engine, s.needsKey, s.lastErr = nil, "", ""
+	return nil
+}
+
 // Logout forgets the sign-in and the vault key. Local files stay.
 func (s *Service) Logout() error {
 	s.mu.Lock()
-	c := s.client
-	s.client, s.account, s.vkey, s.engine, s.needsKey = nil, "", nil, nil, ""
+	c, d := s.client, s.dav
+	s.client, s.dav, s.account, s.vkey, s.engine, s.needsKey = nil, nil, "", nil, nil, ""
 	s.mu.Unlock()
 	if c != nil {
 		_ = c.Revoke()
 	}
+	if d != nil {
+		_ = d.Revoke()
+	}
 	_ = secret.DeleteVaultKey()
+	_ = secret.DeleteWebDAV()
 	return secret.DeleteTokens()
 }
 
 // ---------- Vault key ----------
 
-var ErrNoVault = errors.New("there is no orOS vault in this Dropbox yet")
+var ErrNoVault = errors.New("there is no orOS vault in this cloud yet")
 
 // Unlock opens the vault key with the orOS sync passphrase and keeps
 // the key (not the passphrase) in the keychain. create = the user
@@ -594,6 +712,9 @@ func (s *Service) engineLocked() (*mirror.Engine, error) {
 	}
 	trashDir, err := config.TrashDir()
 	if err != nil {
+		return nil, err
+	}
+	if _, err := mirror.NoteCloud(stateDir, s.cloudID()); err != nil {
 		return nil, err
 	}
 	vk := s.vkey

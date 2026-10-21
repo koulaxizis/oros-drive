@@ -5,6 +5,10 @@
 //   node interop/vaultjs.cjs sync   <oros> <store> <disk> <state> <pass> [--touch] [--fetch-drive]
 //   node interop/vaultjs.cjs legacy <oros> <store> <disk> <pass>
 //
+// With OROS_DAV='{"url","user","pass","dir"}' the vault is on that
+// WebDAV server instead: sync.js runs its real webdavProvider over
+// Node's fetch and <store> is not used.
+//
 // <store>  vault keys as files (key.json, manifest.json, objects/…),
 //          the same layout as Go's vault.DirStore.
 // <disk>   the orOS disk: <disk>/a/b.txt is /internal/a/b.txt.
@@ -32,6 +36,8 @@ if (!cmd || !orosDir || !storeDir || !diskDir) {
   process.exit(2);
 }
 
+const dav = process.env.OROS_DAV ? JSON.parse(process.env.OROS_DAV) : null;
+
 // ---------- the vault folder as a fake Dropbox ----------
 const files = new Map();          // "/vault/<key>" -> { data: Buffer, rev }
 let revN = 0;
@@ -43,7 +49,7 @@ function walk(dir, base, fn) {
     if (e.isDirectory()) walk(p, rel, fn); else fn(rel, p);
   }
 }
-walk(storeDir, "", (rel, p) => files.set("/vault/" + rel, { data: fs.readFileSync(p), rev: "js" + (++revN) }));
+if (!dav) walk(storeDir, "", (rel, p) => files.set("/vault/" + rel, { data: fs.readFileSync(p), rev: "js" + (++revN) }));
 
 function response(status, body, headers) {
   const h = new Map(Object.entries(headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
@@ -139,9 +145,15 @@ async function device(pass, stateFile) {
   let init = {};
   if (stateFile && fs.existsSync(stateFile)) init = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   const localStorage = new MemoryStorage(init);
-  localStorage.setItem("oros-db-access", "token");
-  localStorage.setItem("oros-db-refresh", "refresh");
-  localStorage.setItem("oros-db-expiry", String(Date.now() + 864e5));
+  if (dav) {
+    localStorage.setItem("oros-dav-conf", JSON.stringify({ url: dav.url, user: dav.user, dir: dav.dir }));
+    localStorage.setItem("oros-dav-pass", dav.pass);
+    localStorage.setItem("oros-sync-provider", "webdav");
+  } else {
+    localStorage.setItem("oros-db-access", "token");
+    localStorage.setItem("oros-db-refresh", "refresh");
+    localStorage.setItem("oros-db-expiry", String(Date.now() + 864e5));
+  }
   localStorage.setItem("oros-sync-interval", "0");
   const noop = () => {};
   const ctx = {
@@ -150,7 +162,7 @@ async function device(pass, stateFile) {
     navigator: { onLine: true, userAgent: "oros-drive-interop" },
     location: { search: "", origin: "https://interop.invalid", href: "" },
     history: { replaceState: noop },
-    crypto: webcrypto, fetch: fakeFetch,
+    crypto: webcrypto, fetch: dav ? fetch : fakeFetch, URL,
     console: { log: noop, info: noop, warn: noop, error: (...a) => console.error(...a) },
     setTimeout: () => 0, clearTimeout: noop, setInterval: () => 0, clearInterval: noop,
     addEventListener: noop,
@@ -178,6 +190,7 @@ async function dumpDisk() {
   }
 }
 function dumpStore() {
+  if (dav) return;
   rmrf(storeDir);
   fs.mkdirSync(storeDir, { recursive: true });
   for (const [p, f] of files) {

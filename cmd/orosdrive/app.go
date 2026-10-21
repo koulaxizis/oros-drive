@@ -134,7 +134,7 @@ func cmdUnlock() error {
 			return err
 		}
 		if out["noVault"] == true {
-			return errors.New("there is no orOS vault in this Dropbox yet: sync once from orOS first, or start one from the settings page")
+			return errors.New("there is no orOS vault in this cloud yet: sync once from orOS first, or start one from the settings page")
 		}
 		fmt.Println("Unlocked.")
 		return nil
@@ -145,7 +145,7 @@ func cmdUnlock() error {
 	}
 	if err := s.Unlock(pass, false); err != nil {
 		if errors.Is(err, app.ErrNoVault) {
-			return errors.New("there is no orOS vault in this Dropbox yet: sync once from orOS first, or start one from the settings page")
+			return errors.New("there is no orOS vault in this cloud yet: sync once from orOS first, or start one from the settings page")
 		}
 		return err
 	}

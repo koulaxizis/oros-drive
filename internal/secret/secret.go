@@ -1,5 +1,6 @@
-// Package secret keeps orOS Drive's two secrets: the Dropbox sign-in
-// (refresh token) and the vault key. They go into the OS keychain
+// Package secret keeps orOS Drive's secrets: the cloud sign-in (the
+// Dropbox refresh token, or the WebDAV address and app password) and
+// the vault key. They go into the OS keychain
 // (Windows Credential Manager, the Secret Service on Linux, the
 // macOS Keychain). Where there is none (a Linux server without a
 // desktop session), they fall back to files in the config folder that
@@ -19,12 +20,14 @@ import (
 
 	"github.com/koulaxizis/oros-drive/dropbox"
 	"github.com/koulaxizis/oros-drive/internal/config"
+	"github.com/koulaxizis/oros-drive/webdav"
 )
 
 const service = "orOS Drive"
 
 const (
 	itemDropbox = "dropbox"
+	itemWebDAV  = "webdav"
 	itemVault   = "vault-key"
 )
 
@@ -35,7 +38,7 @@ type VaultKey struct {
 	// unwrapped. A different key file in the cloud means the vault
 	// was reset or rebuilt: the key is not used to create anything.
 	KeyFile string `json:"keyFile"`
-	Account string `json:"account,omitempty"` // Dropbox account id
+	Account string `json:"account,omitempty"` // the cloud account it came from
 }
 
 type vaultKeyJSON struct {
@@ -183,6 +186,34 @@ func SaveTokens(t dropbox.Tokens) error {
 }
 
 func DeleteTokens() error { return del(itemDropbox) }
+
+type davJSON struct {
+	webdav.Conf
+	Pass string `json:"pass"`
+}
+
+// LoadWebDAV returns the WebDAV connection, or dropbox.ErrNotConnected.
+func LoadWebDAV() (webdav.Conf, string, error) {
+	b, err := get(itemWebDAV)
+	if err != nil {
+		return webdav.Conf{}, "", err
+	}
+	var j davJSON
+	if b == nil || json.Unmarshal(b, &j) != nil || j.URL == "" || j.User == "" || j.Pass == "" {
+		return webdav.Conf{}, "", dropbox.ErrNotConnected
+	}
+	return j.Conf, j.Pass, nil
+}
+
+func SaveWebDAV(c webdav.Conf, pass string) error {
+	b, err := json.Marshal(davJSON{Conf: c, Pass: pass})
+	if err != nil {
+		return err
+	}
+	return set(itemWebDAV, b)
+}
+
+func DeleteWebDAV() error { return del(itemWebDAV) }
 
 // LoadVaultKey returns the stored vault key, or nil.
 func LoadVaultKey() (*VaultKey, error) {

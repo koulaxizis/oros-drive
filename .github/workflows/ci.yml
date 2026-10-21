@@ -63,6 +63,21 @@ jobs:
       - run: go test -count=1 -v ./interop/
         env:
           OROS_SRC: ${{ github.workspace }}/oros-src
+      # The WebDAV client against a real server (WsgiDAV): refused as
+      # shipped (ETags per second), every promise kept with exact ETags.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install wsgidav==4.3.5 cheroot
+      - run: |
+          python interop/davserver.py "$RUNNER_TEMP/dav-stock" 8090 stock &
+          python interop/davserver.py "$RUNNER_TEMP/dav-ns" 8091 ns &
+          sleep 3
+          OROS_DAV_TEST_URL=http://127.0.0.1:8090 OROS_DAV_TEST_WANT=dav-conditions go test -count=1 -v -run RealServer ./webdav/
+          OROS_DAV_TEST_URL=http://127.0.0.1:8091 go test -count=1 -v -run RealServer ./webdav/
+        env:
+          OROS_DAV_TEST_USER: chris
+          OROS_DAV_TEST_PASS: pw
 
   build:
     needs: [test, interop]

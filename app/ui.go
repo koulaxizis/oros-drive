@@ -21,6 +21,7 @@ import (
 
 	"github.com/koulaxizis/oros-drive/internal/config"
 	"github.com/koulaxizis/oros-drive/vault"
+	"github.com/koulaxizis/oros-drive/webdav"
 )
 
 //go:embed web
@@ -204,6 +205,25 @@ func (u *UI) Handler() http.Handler {
 		_ = Open(link)
 		return map[string]string{"url": link}, nil
 	})
+	api("/api/login/webdav", "POST", func(r *http.Request) (any, error) {
+		var in struct{ URL, User, Pass, Dir string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			return nil, err
+		}
+		return nil, u.S.ConnectWebDAV(in.URL, in.User, in.Pass, in.Dir)
+	})
+	api("/api/login/nextcloud", "POST", func(r *http.Request) (any, error) {
+		var in struct{ URL, Dir string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			return nil, err
+		}
+		link, err := u.S.StartNextcloud(in.URL, in.Dir)
+		if err != nil {
+			return nil, err
+		}
+		_ = Open(link)
+		return map[string]string{"url": link}, nil
+	})
 	api("/api/logout", "POST", func(r *http.Request) (any, error) { return nil, u.S.Logout() })
 	api("/api/unlock", "POST", func(r *http.Request) (any, error) {
 		var in struct {
@@ -337,6 +357,11 @@ func friendly(err error) string {
 		return "locked"
 	case errors.Is(err, ErrNoVault):
 		return "no-vault"
+	case errors.Is(err, ErrSignedIn):
+		return ErrSignedIn.Error()
+	}
+	if c := webdav.Code(err); c != "" {
+		return c
 	}
 	return err.Error()
 }

@@ -2,7 +2,7 @@
 // `gomobile bind` into an .aar. The app supplies two things Go cannot
 // reach on Android: the folders the user granted through the system
 // picker (Folders) and the Android Keystore (Secrets). Everything
-// else (Dropbox, the vault, the mirror rules) is the same code as the
+// else (Dropbox or WebDAV, the vault, the mirror rules) is the same code as the
 // desktop app.
 //
 // gomobile passes only simple types, so lists and records cross as
@@ -21,6 +21,7 @@ import (
 	"github.com/koulaxizis/oros-drive/internal/config"
 	"github.com/koulaxizis/oros-drive/internal/secret"
 	"github.com/koulaxizis/oros-drive/mirror"
+	"github.com/koulaxizis/oros-drive/webdav"
 )
 
 // Folders is implemented by the Android app over the Storage Access
@@ -80,6 +81,27 @@ func (d *Drive) Status() string { return asJSON(d.s.Status()) }
 // Custom Tab; Dropbox sends the browser back to localhost:47800, which
 // this library answers. Status().login tells how it went.
 func (d *Drive) LoginURL() (string, error) { return d.s.StartLogin() }
+
+// ConnectWebDAV checks a WebDAV folder (Nextcloud, ownCloud, a NAS)
+// and makes it the cloud. Errors are "dav-…" codes (the app shows one
+// sentence for each).
+func (d *Drive) ConnectWebDAV(url, user, pass, dir string) error {
+	return davCode(d.s.ConnectWebDAV(url, user, pass, dir))
+}
+
+// NextcloudLoginURL starts a Nextcloud sign-in: open the returned page
+// in a Custom Tab; Status().login tells how it went.
+func (d *Drive) NextcloudLoginURL(server, dir string) (string, error) {
+	u, err := d.s.StartNextcloud(server, dir)
+	return u, davCode(err)
+}
+
+func davCode(err error) error {
+	if c := webdav.Code(err); c != "" {
+		return errors.New(c)
+	}
+	return err
+}
 
 // Logout forgets the sign-in and the vault key.
 func (d *Drive) Logout() error { return d.s.Logout() }

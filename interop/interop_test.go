@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/koulaxizis/oros-drive/vault"
+	"github.com/koulaxizis/oros-drive/webdav"
+	"github.com/koulaxizis/oros-drive/webdav/davtest"
 )
 
 const pass = "interop passphrase · Ελληνικά"
@@ -27,7 +29,15 @@ const pass = "interop passphrase · Ελληνικά"
 type env struct {
 	t                       *testing.T
 	src, store, disk, state string
+	// dav: the vault lives on a WebDAV server instead of the folder
+	// store, and sync.js uses its real webdavProvider (overWebDAV).
+	dav *davtest.Server
 }
+
+// overWebDAV makes setup put the vault on a fake WebDAV server.
+var overWebDAV bool
+
+const davUser, davPass, davFiles = "chris", "app pass", "/remote.php/dav/files/chris"
 
 func setup(t *testing.T) *env {
 	t.Helper()
@@ -42,6 +52,10 @@ func setup(t *testing.T) *env {
 	e := &env{t: t, src: src, store: filepath.Join(d, "store"), disk: filepath.Join(d, "disk"), state: filepath.Join(d, "state.json")}
 	os.MkdirAll(e.store, 0o755)
 	os.MkdirAll(e.disk, 0o755)
+	if overWebDAV {
+		e.dav = davtest.New(davUser, davPass, davFiles, "/remote.php/dav/uploads/chris")
+		t.Cleanup(e.dav.Close)
+	}
 	return e
 }
 
@@ -52,6 +66,10 @@ type stats struct {
 func (e *env) js(args ...string) stats {
 	e.t.Helper()
 	cmd := exec.Command("node", append([]string{"vaultjs.cjs", args[0], e.src, e.store, e.disk}, args[1:]...)...)
+	if e.dav != nil {
+		conf, _ := json.Marshal(map[string]string{"url": e.dav.URL + davFiles, "user": davUser, "pass": davPass, "dir": "/orOS"})
+		cmd.Env = append(os.Environ(), "OROS_DAV="+string(conf))
+	}
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -133,8 +151,20 @@ func sameFiles(t *testing.T, got, want map[string][]byte) {
 	}
 }
 
+// goStore is the vault as the Go code reaches it.
+func (e *env) goStore() vault.Store {
+	if e.dav != nil {
+		conf, err := webdav.NormConf(e.dav.URL+davFiles, davUser, "")
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		return webdav.New(conf, davPass)
+	}
+	return vault.NewDirStore(e.store)
+}
+
 func goVault(e *env) *vault.Vault {
-	return vault.New(vault.NewDirStore(e.store), vault.NewPassphrase(pass))
+	return vault.New(e.goStore(), vault.NewPassphrase(pass))
 }
 
 // goRead returns every file of the vault through the Go code, keyed
@@ -162,6 +192,9 @@ func TestBrowserWritesGoReads(t *testing.T) {
 	writeDisk(t, e.disk, files)
 	if s := e.jsSync(false); s.Uploaded != len(files) || s.Failed != 0 {
 		t.Fatalf("vault.js push: %+v", s)
+	}
+	if e.dav != nil && (e.dav.File(davFiles+"/orOS/vault/manifest.json") == nil || len(e.dav.Files(davFiles+"/orOS/vault/objects/")) != len(files)) {
+		t.Fatal("sync.js did not write to the WebDAV server:", e.dav.Files(""))
 	}
 	sameFiles(t, goRead(t, goVault(e)), files)
 }
@@ -239,8 +272,29 @@ func TestWrongPassphrase(t *testing.T) {
 	e := setup(t)
 	writeDisk(t, e.disk, map[string][]byte{"x.txt": []byte("x")})
 	e.jsSync(false)
-	v := vault.New(vault.NewDirStore(e.store), vault.NewPassphrase("not it"))
+	v := vault.New(e.goStore(), vault.NewPassphrase("not it"))
 	if _, err := v.FetchManifest(); err != vault.ErrLocked {
 		t.Fatalf("got %v, want ErrLocked", err)
+	}
+}
+
+// The same hand-overs with the vault on a WebDAV server (Nextcloud
+// layout): the Go webdav client and sync.js's webdavProvider read and
+// write the same files. (The legacy vault is a format test only.)
+func TestOverWebDAV(t *testing.T) {
+	overWebDAV = true
+	defer func() { overWebDAV = false }()
+	for _, c := range []struct {
+		name string
+		f    func(*testing.T)
+	}{
+		{"BrowserWritesGoReads", TestBrowserWritesGoReads},
+		{"GoWritesBrowserReads", TestGoWritesBrowserReads},
+		{"TakingTurns", TestTakingTurns},
+		{"WrongPassphrase", TestWrongPassphrase},
+		{"MirrorAndBrowserTakeTurns", TestMirrorAndBrowserTakeTurns},
+		{"MirrorConflictWithBrowser", TestMirrorConflictWithBrowser},
+	} {
+		t.Run(c.name, c.f)
 	}
 }
