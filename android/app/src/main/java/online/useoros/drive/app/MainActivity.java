@@ -70,6 +70,12 @@ public class MainActivity extends Activity {
         body.setFocusableInTouchMode(true);
         sv.addView(body);
         setContentView(sv);
+        // Upload progress, conflict copies and unsaved files are told
+        // in notifications (Android 13+ asks once).
+        if (android.os.Build.VERSION.SDK_INT >= 33 && b == null
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
         io.execute(() -> {
             try {
                 drive = DriveCore.get(this);
@@ -480,6 +486,19 @@ public class MainActivity extends Activity {
         charging.setChecked(prefs.getBoolean("charging-only", false));
         charging.setOnCheckedChangeListener((b, on) -> { prefs.edit().putBoolean("charging-only", on).apply(); DriveWorker.schedule(this); });
         body.addView(charging);
+        // Camera backup (wave 4): only what is taken from now on.
+        CheckBox camera = new CheckBox(this);
+        camera.setText(R.string.drive_camera);
+        camera.setChecked(prefs.getBoolean(CameraUploader.ON, false) && CameraUploader.allowed(this));
+        camera.setOnCheckedChangeListener((b, on) -> {
+            if (!on) { prefs.edit().putBoolean(CameraUploader.ON, false).apply(); return; }
+            if (CameraUploader.allowed(this)) cameraOn();
+            else requestPermissions(CameraUploader.permissions(), 2);
+        });
+        body.addView(camera);
+        if (prefs.getBoolean(CameraUploader.ON, false)) {
+            body.addView(text(getString(R.string.drive_camera_where), 13));
+        }
 
         body.addView(text(getString(R.string.drive_max_file), 14));
         EditText max = new EditText(this);
@@ -519,6 +538,27 @@ public class MainActivity extends Activity {
                 .setNegativeButton(R.string.drive_cancel, null)
                 .show()));
         body.addView(row);
+    }
+
+    private void cameraOn() {
+        getSharedPreferences(DriveWorker.PREFS, Context.MODE_PRIVATE).edit()
+                .putBoolean(CameraUploader.ON, true)
+                .putLong(CameraUploader.SINCE, System.currentTimeMillis() / 1000)
+                .remove(CameraUploader.DONE)
+                .apply();
+        DriveWorker.schedule(this);
+        render();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        if (code != 2) return;
+        if (CameraUploader.allowed(this)) cameraOn();
+        else {
+            Toast.makeText(this, R.string.drive_camera_denied, Toast.LENGTH_LONG).show();
+            render();
+        }
     }
 
     private void renderEvents() {

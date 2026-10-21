@@ -123,3 +123,36 @@ func TestOfflineFiles(t *testing.T) {
 		t.Fatal("offline file cleared", err)
 	}
 }
+
+func TestSharedAndCameraUploads(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OROS_DRIVE_STORE_DIR", filepath.Join(dir, "cloud"))
+	d, err := NewDrive(filepath.Join(dir, "data"), "Pixel 8", fakeFolders{}, memSecrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Unlock("phone pass", true); err != nil {
+		t.Fatal(err)
+	}
+	cam := d.CameraDir()
+	if cam != "/internal/Drive/Pixel 8/Camera backup" {
+		t.Fatal(cam)
+	}
+	local := filepath.Join(dir, "img")
+	os.WriteFile(local, []byte("jpeg"), 0o600)
+	var i vdisk.Info
+	for n := 0; n < 2; n++ { // a retry writes nothing new
+		js, err := d.DiskPutNew(cam, "IMG_1.jpg", local)
+		json.Unmarshal([]byte(js), &i)
+		if err != nil || i.Path != cam+"/IMG_1.jpg" {
+			t.Fatal(js, err)
+		}
+	}
+	if _, err := d.DiskPutNew(cam, "x.tmp~", local); err == nil || err.Error() != "bad-name" {
+		t.Fatal(err)
+	}
+	// The camera folder's name is not for a mirrored folder.
+	if _, err := d.AddFolder("content://tree/camera", "camera BACKUP"); err == nil || err.Error() != "choose another name" {
+		t.Fatal("a mirrored folder took the camera folder's name")
+	}
+}

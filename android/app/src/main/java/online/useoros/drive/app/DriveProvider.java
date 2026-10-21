@@ -261,32 +261,12 @@ public class DriveProvider extends DocumentsProvider {
         }
     }
 
-    private static final String CHANNEL = "oros-drive";
-
     /** A save that did not reach orOS: the app that wrote it thinks it
      *  is saved, so tell the person (if notifications are allowed). */
     private void notSaved(String id, String why) {
         Context c = getContext();
-        NotificationManager nm = c.getSystemService(NotificationManager.class);
-        if (nm == null || !nm.areNotificationsEnabled()) return;
-        if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(new NotificationChannel(CHANNEL, c.getString(R.string.drive_channel),
-                    NotificationManager.IMPORTANCE_DEFAULT));
-        }
-        PendingIntent open = PendingIntent.getActivity(c, 0, new Intent(c, MainActivity.class),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String text = c.getString(R.string.drive_not_saved_text, id.substring(id.lastIndexOf('/') + 1), why);
-        Notification.Builder b = (Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(c, CHANNEL)
-                : new Notification.Builder(c))
-                .setSmallIcon(R.drawable.ic_stat_drive)
-                .setContentTitle(c.getString(R.string.drive_not_saved_title))
-                .setContentText(text)
-                .setStyle(new Notification.BigTextStyle().bigText(text))
-                .setAutoCancel(true)
-                .setContentIntent(open)
-                .setCategory(Notification.CATEGORY_ERROR);
-        nm.notify(id, 2, b.build());
+        Notify.message(c, id, 2, c.getString(R.string.drive_not_saved_title), text, Notification.CATEGORY_ERROR);
     }
 
     private static void copy(File from, File to) throws Exception {

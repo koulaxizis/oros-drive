@@ -518,10 +518,39 @@ func (s *Service) AddFolder(local, name string) (mirror.Pair, error) {
 	return p, nil
 }
 
+// CameraName is the phone's camera upload folder in its Drive folder
+// (Android wave 4); a mirrored folder may not take it.
+const CameraName = "Camera backup"
+
+// CameraDir is where the phone's camera uploads go:
+// "/internal/Drive/<device>/Camera backup", or "Camera backup 2", ... if a folder
+// mirrored before this rule already has that name. Uploads there only
+// add files (vdisk.PutNew).
+func (s *Service) CameraDir() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for n := 1; ; n++ {
+		name := CameraName
+		if n > 1 {
+			name = fmt.Sprintf("%s %d", CameraName, n)
+		}
+		dir := path.Join(mirror.DriveRoot, s.settings.Device, name)
+		taken := false
+		for _, p := range s.settings.Folders {
+			if strings.EqualFold(p.Remote, dir) {
+				taken = true
+			}
+		}
+		if !taken {
+			return dir
+		}
+	}
+}
+
 // addGranted adds a folder the host app holds a grant for (Android).
 func (s *Service) addGranted(local, name string) (mirror.Pair, error) {
 	name = config.CleanName(name)
-	if local == "" || name == "" || !mirror.LocalNameOK(name, "windows") {
+	if local == "" || name == "" || !mirror.LocalNameOK(name, "windows") || strings.EqualFold(name, CameraName) {
 		return mirror.Pair{}, errors.New("choose another name")
 	}
 	s.mu.Lock()
