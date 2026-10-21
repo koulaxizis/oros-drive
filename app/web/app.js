@@ -9,11 +9,17 @@ var T = {
     loginTitle: "Sign in to Dropbox",
     loginText: "Use the Dropbox account orOS syncs with. orOS Drive puts your folders into the encrypted orOS Vault there; Dropbox cannot read them.",
     loginBtn: "Sign in with Dropbox", loginWait: "Finish the sign-in in the browser tab that opened.",
+    davTitle: "Or your own server",
+    davText: "Nextcloud, ownCloud, Synology, QNAP or any WebDAV folder: the one orOS syncs with (Settings › Sync › WebDAV in orOS).",
+    davUrl: "Server address", davDir: "Folder on the server (empty = /orOS)",
+    davNextcloud: "Sign in with Nextcloud", davOther: "Other WebDAV server (user name and app password)",
+    davOtherText: "Use the full WebDAV address of your files and an app password made for orOS Drive, not your main password.",
+    davUser: "User name", davPass: "App password", davConnect: "Connect", davChecking: "Checking the server…",
     unlockTitle: "Unlock the vault",
     unlockText: "Type your orOS sync passphrase (Settings › Sync in orOS). It opens the vault key, which is kept in this computer's keychain; the passphrase itself is not stored.",
-    unlockReset: "The vault in Dropbox was reset or rebuilt. Type the orOS sync passphrase again to continue.",
+    unlockReset: "The vault in {cloud} was reset or rebuilt. Type the orOS sync passphrase again to continue.",
     unlockBtn: "Unlock", wrongPass: "This passphrase does not open the vault.",
-    noVault: "There is no orOS vault in this Dropbox yet. Start one with this passphrase? Use the same passphrase in orOS.",
+    noVault: "There is no orOS vault in {cloud} yet. Start one with this passphrase? Use the same passphrase in orOS.",
     createBtn: "Start a new vault",
     folders: "Mirrored folders",
     foldersIntro: "Each folder appears in orOS under Files › orOS Drive › {device}. Changes go both ways.",
@@ -21,7 +27,7 @@ var T = {
     added: "Added. The first sync only adds files; nothing is deleted on either side.",
     none: "No folders yet.",
     fOk: "Up to date", fPaused: "Paused", fMissing: "The folder is missing (an unplugged disk?). Nothing is changed until it is back.",
-    fReset: "The vault in Dropbox is empty although this folder was synced. Nothing was deleted here. Check orOS, then remove and add the folder again to start over.",
+    fReset: "The vault in {cloud} is empty although this folder was synced. Nothing was deleted here. Check orOS, then remove and add the folder again to start over.",
     fError: "Error: ", fHeld: "{n} files were deleted at once. Delete them in orOS too?",
     approve: "Yes, delete them", keepPaused: "No, pause this folder",
     files: "{n} files", file1: "1 file", auto: "Auto", lastSync: "synced {t}",
@@ -32,10 +38,10 @@ var T = {
     diskText: "The whole orOS disk appears as a folder on this computer. Files download when you open them and upload when you save them; a copy of what you opened stays in a cache.",
     diskOn: "Show the orOS disk", diskPath: "Folder (it must be empty)",
     diskMounted: "Shown at {p}.", diskOff: "Off.", diskLocked: "Shown again once the vault is unlocked.",
-    spaceTitle: "Space in Dropbox",
+    spaceTitle: "Space in {cloud}",
     spaceText: "Files are stored encrypted. Deleted and replaced files leave content behind that no file uses; after 30 days it can be removed.",
     spaceShow: "Show space use", spaceWait: "Counting…",
-    spFiles: "{f} in orOS, {s}", spStored: "Stored in Dropbox (encrypted): {s} in {n} pieces",
+    spFiles: "{f} in orOS, {s}", spStored: "Stored in {cloud} (encrypted): {s} in {n} pieces",
     spUnused: "No longer used: {s}", spFree: "Unused for more than 30 days, can be removed: {s}",
     spMissing: "{n} files have no stored content and cannot be opened on any device",
     spNoManifest: "Nothing is synced yet, so nothing is removed.",
@@ -50,12 +56,23 @@ var T = {
     updateText: "orOS Drive {v} is available. Install it over this one: your folders and settings stay.", updateBtn: "Download page",
     openOros: "Open orOS", openTrash: "Open the trash", lock: "Forget the vault key", logout: "Sign out", quit: "Quit orOS Drive",
     lockAsk: "Forget the vault key? The mirror stops until you type the passphrase again.",
-    logoutAsk: "Sign out of Dropbox? The mirror stops. Files stay where they are.",
+    logoutAsk: "Sign out of {cloud}? The mirror stops. Files stay where they are.",
     quitAsk: "Quit orOS Drive? Folders are not mirrored while it is closed.",
     about: "orOS Drive {v}. Secrets are kept in: {w}. Free and open source (MIT).",
     whereKeychain: "the system keychain", whereFile: "a private file in the settings folder (no keychain found)",
     pickTitle: "Choose a folder", pickThis: "Choose this folder", cancel: "Cancel", up: "↑ Up",
-    secondsAgo: "just now", minutesAgo: "{n} min ago", at: "at {t}"
+    secondsAgo: "just now", minutesAgo: "{n} min ago", at: "at {t}",
+    "dav-url": "Use the full https:// address of your server (plain http only for this computer), with no password in it.",
+    "dav-missing": "Fill in the user name and the app password.",
+    "dav-unreachable": "The server did not answer. Check the address and the connection.",
+    "dav-auth": "The server refused this user name or password.",
+    "dav-notdav": "This address is not a WebDAV folder.",
+    "dav-readonly": "orOS Drive cannot write to this folder on the server.",
+    "dav-etag": "The server does not report file versions (ETag), so it cannot sync safely.",
+    "dav-conditions": "This server does not stop two devices from overwriting each other (If-Match), so orOS Drive will not sync through it.",
+    "dav-connected": "Sign out of the current cloud first.",
+    "dav-notnextcloud": "This address is not a Nextcloud server.",
+    "dav-login-expired": "The sign-in was not approved in time. Try again."
   },
   el: {
     syncNow: "Συγχρονισμός τώρα", pause: "Παύση", resume: "Συνέχεια",
@@ -63,11 +80,17 @@ var T = {
     loginTitle: "Σύνδεση στο Dropbox",
     loginText: "Χρησιμοποίησε τον λογαριασμό Dropbox με τον οποίο συγχρονίζει το orOS. Το orOS Drive βάζει τους φακέλους σου στο κρυπτογραφημένο Vault του orOS εκεί· το Dropbox δεν μπορεί να τους διαβάσει.",
     loginBtn: "Σύνδεση με Dropbox", loginWait: "Ολοκλήρωσε τη σύνδεση στην καρτέλα του browser που άνοιξε.",
+    davTitle: "Ή ο δικός σου server",
+    davText: "Nextcloud, ownCloud, Synology, QNAP ή οποιοσδήποτε φάκελος WebDAV: αυτός με τον οποίο συγχρονίζει το orOS (Ρυθμίσεις › Συγχρονισμός › WebDAV στο orOS).",
+    davUrl: "Διεύθυνση του server", davDir: "Φάκελος στον server (κενό = /orOS)",
+    davNextcloud: "Σύνδεση με Nextcloud", davOther: "Άλλος server WebDAV (όνομα χρήστη και κωδικός εφαρμογής)",
+    davOtherText: "Βάλε την πλήρη διεύθυνση WebDAV των αρχείων σου και έναν κωδικό εφαρμογής φτιαγμένο για το orOS Drive, όχι τον κύριο κωδικό σου.",
+    davUser: "Όνομα χρήστη", davPass: "Κωδικός εφαρμογής", davConnect: "Σύνδεση", davChecking: "Έλεγχος του server…",
     unlockTitle: "Ξεκλείδωμα του Vault",
     unlockText: "Γράψε το συνθηματικό συγχρονισμού του orOS (Ρυθμίσεις › Συγχρονισμός στο orOS). Ανοίγει το κλειδί του Vault, που φυλάγεται στο keychain του υπολογιστή· το ίδιο το συνθηματικό δεν αποθηκεύεται.",
-    unlockReset: "Το Vault στο Dropbox μηδενίστηκε ή φτιάχτηκε ξανά. Γράψε ξανά το συνθηματικό συγχρονισμού του orOS για να συνεχίσεις.",
+    unlockReset: "Το Vault στο {cloud} μηδενίστηκε ή φτιάχτηκε ξανά. Γράψε ξανά το συνθηματικό συγχρονισμού του orOS για να συνεχίσεις.",
     unlockBtn: "Ξεκλείδωμα", wrongPass: "Αυτό το συνθηματικό δεν ανοίγει το Vault.",
-    noVault: "Δεν υπάρχει ακόμα Vault του orOS σε αυτό το Dropbox. Να ξεκινήσει ένα με αυτό το συνθηματικό; Βάλε το ίδιο συνθηματικό και στο orOS.",
+    noVault: "Δεν υπάρχει ακόμα Vault του orOS στο {cloud}. Να ξεκινήσει ένα με αυτό το συνθηματικό; Βάλε το ίδιο συνθηματικό και στο orOS.",
     createBtn: "Νέο Vault",
     folders: "Φάκελοι σε mirror",
     foldersIntro: "Κάθε φάκελος εμφανίζεται στο orOS στα Αρχεία › orOS Drive › {device}. Οι αλλαγές πάνε και προς τις δύο μεριές.",
@@ -75,7 +98,7 @@ var T = {
     added: "Προστέθηκε. Ο πρώτος συγχρονισμός μόνο προσθέτει αρχεία· τίποτα δεν σβήνεται σε καμία μεριά.",
     none: "Δεν υπάρχουν φάκελοι ακόμα.",
     fOk: "Ενημερωμένος", fPaused: "Σε παύση", fMissing: "Ο φάκελος λείπει (αποσυνδεδεμένος δίσκος;). Δεν αλλάζει τίποτα μέχρι να επιστρέψει.",
-    fReset: "Το Vault στο Dropbox είναι άδειο, ενώ αυτός ο φάκελος είχε συγχρονιστεί. Δεν σβήστηκε τίποτα εδώ. Έλεγξε το orOS και μετά αφαίρεσε και πρόσθεσε ξανά τον φάκελο για να ξεκινήσει από την αρχή.",
+    fReset: "Το Vault στο {cloud} είναι άδειο, ενώ αυτός ο φάκελος είχε συγχρονιστεί. Δεν σβήστηκε τίποτα εδώ. Έλεγξε το orOS και μετά αφαίρεσε και πρόσθεσε ξανά τον φάκελο για να ξεκινήσει από την αρχή.",
     fError: "Σφάλμα: ", fHeld: "Σβήστηκαν {n} αρχεία μαζί. Να σβηστούν και στο orOS;",
     approve: "Ναι, σβήσ' τα", keepPaused: "Όχι, παύση του φακέλου",
     files: "{n} αρχεία", file1: "1 αρχείο", auto: "Αυτόματα", lastSync: "συγχρονίστηκε {t}",
@@ -86,10 +109,10 @@ var T = {
     diskText: "Όλος ο δίσκος του orOS εμφανίζεται ως φάκελος σε αυτόν τον υπολογιστή. Τα αρχεία κατεβαίνουν όταν τα ανοίγεις και ανεβαίνουν όταν τα αποθηκεύεις· ένα αντίγραφο όσων άνοιξες μένει στην cache.",
     diskOn: "Εμφάνιση του δίσκου του orOS", diskPath: "Φάκελος (πρέπει να είναι άδειος)",
     diskMounted: "Εμφανίζεται στο {p}.", diskOff: "Ανενεργό.", diskLocked: "Θα εμφανιστεί ξανά μόλις ξεκλειδωθεί το vault.",
-    spaceTitle: "Χώρος στο Dropbox",
+    spaceTitle: "Χώρος στο {cloud}",
     spaceText: "Τα αρχεία αποθηκεύονται κρυπτογραφημένα. Όσα σβήστηκαν ή αντικαταστάθηκαν αφήνουν περιεχόμενο που δεν χρησιμοποιεί κανένα αρχείο· μετά από 30 ημέρες μπορεί να αφαιρεθεί.",
     spaceShow: "Εμφάνιση χώρου", spaceWait: "Μετράει…",
-    spFiles: "{f} στο orOS, {s}", spStored: "Αποθηκευμένα στο Dropbox (κρυπτογραφημένα): {s} σε {n} κομμάτια",
+    spFiles: "{f} στο orOS, {s}", spStored: "Αποθηκευμένα στο {cloud} (κρυπτογραφημένα): {s} σε {n} κομμάτια",
     spUnused: "Δεν χρησιμοποιούνται πια: {s}", spFree: "Αχρησιμοποίητα πάνω από 30 ημέρες, μπορούν να αφαιρεθούν: {s}",
     spMissing: "{n} αρχεία δεν έχουν αποθηκευμένο περιεχόμενο και δεν ανοίγουν σε καμία συσκευή",
     spNoManifest: "Δεν έχει συγχρονιστεί τίποτα ακόμα, οπότε δεν αφαιρείται τίποτα.",
@@ -104,23 +127,42 @@ var T = {
     updateText: "Υπάρχει νέα έκδοση, το orOS Drive {v}. Εγκατέστησέ τη πάνω από αυτή: οι φάκελοι και οι ρυθμίσεις μένουν.", updateBtn: "Σελίδα λήψης",
     openOros: "Άνοιγμα orOS", openTrash: "Άνοιγμα κάδου", lock: "Ξέχνα το κλειδί του Vault", logout: "Αποσύνδεση", quit: "Έξοδος από το orOS Drive",
     lockAsk: "Να ξεχαστεί το κλειδί του Vault; Το mirror σταματά μέχρι να γράψεις ξανά το συνθηματικό.",
-    logoutAsk: "Αποσύνδεση από το Dropbox; Το mirror σταματά. Τα αρχεία μένουν όπου είναι.",
+    logoutAsk: "Αποσύνδεση από το {cloud}; Το mirror σταματά. Τα αρχεία μένουν όπου είναι.",
     quitAsk: "Έξοδος από το orOS Drive; Οι φάκελοι δεν συγχρονίζονται όσο είναι κλειστό.",
     about: "orOS Drive {v}. Τα μυστικά φυλάγονται: {w}. Δωρεάν και ανοιχτού κώδικα (MIT).",
     whereKeychain: "στο keychain του συστήματος", whereFile: "σε ιδιωτικό αρχείο στον φάκελο ρυθμίσεων (δεν βρέθηκε keychain)",
     pickTitle: "Επιλογή φακέλου", pickThis: "Αυτός ο φάκελος", cancel: "Ακύρωση", up: "↑ Πάνω",
-    secondsAgo: "μόλις τώρα", minutesAgo: "πριν από {n} λεπτά", at: "στις {t}"
+    secondsAgo: "μόλις τώρα", minutesAgo: "πριν από {n} λεπτά", at: "στις {t}",
+    "dav-url": "Βάλε την πλήρη διεύθυνση https:// του server (απλό http μόνο για αυτόν τον υπολογιστή), χωρίς κωδικό μέσα της.",
+    "dav-missing": "Συμπλήρωσε το όνομα χρήστη και τον κωδικό εφαρμογής.",
+    "dav-unreachable": "Ο server δεν απάντησε. Έλεγξε τη διεύθυνση και τη σύνδεση.",
+    "dav-auth": "Ο server δεν δέχτηκε αυτό το όνομα χρήστη ή τον κωδικό.",
+    "dav-notdav": "Αυτή η διεύθυνση δεν είναι φάκελος WebDAV.",
+    "dav-readonly": "Το orOS Drive δεν μπορεί να γράψει σε αυτόν τον φάκελο του server.",
+    "dav-etag": "Ο server δεν δίνει τις εκδόσεις των αρχείων (ETag), οπότε δεν μπορεί να συγχρονίσει με ασφάλεια.",
+    "dav-conditions": "Αυτός ο server δεν εμποδίζει δύο συσκευές να σβήσουν η μία τις αλλαγές της άλλης (If-Match), οπότε το orOS Drive δεν θα συγχρονίσει μέσω αυτού.",
+    "dav-connected": "Αποσυνδέσου πρώτα από το τρέχον cloud.",
+    "dav-notnextcloud": "Αυτή η διεύθυνση δεν είναι server Nextcloud.",
+    "dav-login-expired": "Η σύνδεση δεν εγκρίθηκε εγκαίρως. Δοκίμασε ξανά."
   }
 };
 
-var state = null, lang = "en", pickPath = "", editingPrefs = false;
+var state = null, lang = "en", pickPath = "", editingPrefs = false, davBusy = false;
 
 function $(id) { return document.getElementById(id); }
 function t(key, vars) {
   var s = (T[lang] && T[lang][key]) || T.en[key] || key;
   if (vars) Object.keys(vars).forEach(function (k) { s = s.split("{" + k + "}").join(String(vars[k])); });
-  return s;
+  return s.split("{cloud}").join(cloudName());
 }
+// "Dropbox", or the WebDAV server's host ("cloud.example.com").
+function cloudName() {
+  if (!state || state.provider !== "webdav" || !state.account) return "Dropbox";
+  var a = state.account, i = a.lastIndexOf("@");
+  return (i >= 0 ? a.slice(i + 1) : a).split("/")[0] || "WebDAV";
+}
+// A "dav-…" code from the app becomes one sentence.
+function errText(m) { return /^dav-[a-z-]+$/.test(m || "") && T.en[m] ? t(m) : m; }
 function el(tag, cls, text) {
   var e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -170,7 +212,7 @@ function render() {
   $("btn-pause").textContent = s.paused ? t("resume") : t("pause");
 
   $("sec-login").hidden = s.signedIn;
-  $("login-msg").textContent = s.login === "waiting" ? t("loginWait") : (s.login || "");
+  if (!davBusy) $("login-msg").textContent = s.login === "waiting" ? t("loginWait") : errText(s.login || "");
   $("sec-unlock").hidden = !s.signedIn || s.unlocked;
   $("unlock-text").textContent = s.needsKey === "reset" ? t("unlockReset") : t("unlockText");
   var ready = s.signedIn && s.unlocked;
@@ -372,6 +414,29 @@ document.addEventListener("DOMContentLoaded", function () {
   $("btn-login").onclick = function () {
     api("login", {}).then(function (r) { msg("login-msg", t("loginWait")); window.open(r.url, "_blank", "noopener"); })
       .catch(function (e) { msg("login-msg", e.message, true); });
+  };
+  $("btn-nextcloud").onclick = function () {
+    if (!$("dav-url").reportValidity()) return;
+    davBusy = true;
+    msg("login-msg", t("davChecking"));
+    api("login/nextcloud", { url: $("dav-url").value, dir: $("dav-dir").value }).then(function (r) {
+      davBusy = false;
+      msg("login-msg", t("loginWait"));
+      if (/^https?:\/\//.test(r.url)) window.open(r.url, "_blank", "noopener");
+    }).catch(function (e) { davBusy = false; msg("login-msg", errText(e.message), true); });
+  };
+  $("form-dav").onsubmit = function (ev) {
+    ev.preventDefault();
+    davBusy = true;
+    msg("login-msg", t("davChecking"));
+    api("login/webdav", {
+      url: $("dav-url").value, dir: $("dav-dir").value, user: $("dav-user").value, pass: $("dav-pass").value
+    }).then(function () {
+      davBusy = false;
+      $("dav-pass").value = "";
+      msg("login-msg", "");
+      refresh();
+    }).catch(function (e) { davBusy = false; msg("login-msg", errText(e.message), true); });
   };
   $("form-unlock").onsubmit = function (ev) { ev.preventDefault(); unlock(false); };
   $("btn-create").onclick = function () { unlock(true); };

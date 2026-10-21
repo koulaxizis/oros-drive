@@ -22,6 +22,7 @@ import (
 	"github.com/koulaxizis/oros-drive/dropbox"
 	"github.com/koulaxizis/oros-drive/internal/secret"
 	"github.com/koulaxizis/oros-drive/vault"
+	"github.com/koulaxizis/oros-drive/webdav"
 )
 
 var version = "dev"
@@ -33,6 +34,11 @@ Usage:
                                  the app: mirrors your folders, tray icon, settings page
   orosdrive open                 open the settings page of the running app
   orosdrive login [--paste]      sign in to your Dropbox (the one orOS syncs with)
+  orosdrive login --nextcloud <server> [--dir /orOS]
+                                 sign in to your Nextcloud (approve in the browser)
+  orosdrive login --webdav <url> --user <name> [--dir /orOS]
+                                 use any WebDAV folder (app password asked for,
+                                 or read from OROS_DAV_PASSWORD)
   orosdrive logout               forget the sign-in and the vault key
   orosdrive unlock               open the vault key with the orOS sync passphrase
                                  (kept in the system keychain; the passphrase is not)
@@ -45,7 +51,7 @@ Usage:
   orosdrive ls [-l] [path]       list files in the orOS disk (path like Docs/Work)
   orosdrive pull [--force] <path> <folder>
                                  copy a file or folder of the orOS disk into <folder>
-  orosdrive usage [--clean]      space used in Dropbox; --clean removes content no
+  orosdrive usage [--clean]      space used in the cloud; --clean removes content no
                                  file has used for 30 days
   orosdrive mount [<folder> | off]
                                  show the whole orOS disk as <folder> while the app
@@ -112,12 +118,28 @@ func friendly(err error) string {
 	switch {
 	case errors.Is(err, dropbox.ErrNotConnected):
 		return "not signed in: run `orosdrive login` first"
+	case webdav.Code(err) != "":
+		return davText[webdav.Code(err)]
 	case errors.Is(err, vault.ErrLocked):
 		return "this passphrase does not open the vault (use the orOS sync passphrase)"
 	case errors.Is(err, vault.ErrMismatch):
 		return err.Error() + " (the stored object was changed or swapped; nothing was written)"
 	}
 	return err.Error()
+}
+
+// davText says what a refused WebDAV connection means.
+var davText = map[string]string{
+	"dav-url":           "use the full https:// address of your server (plain http only for this computer), with no password in it",
+	"dav-missing":       "fill in the user name (--user) and the app password",
+	"dav-unreachable":   "the server did not answer: check the address and the connection",
+	"dav-auth":          "the server refused this user name or password",
+	"dav-notdav":        "this address is not a WebDAV folder",
+	"dav-readonly":      "cannot write to this folder on the server",
+	"dav-etag":          "the server does not report file versions (ETag), so it cannot sync safely",
+	"dav-conditions":    "this server does not stop two devices from overwriting each other (If-Match), so orOS Drive will not sync through it",
+	"dav-notnextcloud":  "this address is not a Nextcloud server",
+	"dav-login-expired": "the sign-in was not approved in time; try again",
 }
 
 func client() (*dropbox.Client, error) {
@@ -128,6 +150,15 @@ func client() (*dropbox.Client, error) {
 	c := dropbox.New(t)
 	c.OnTokens = func(t dropbox.Tokens) { _ = secret.SaveTokens(t) }
 	return c, nil
+}
+
+// davClient is the WebDAV connection, when this computer uses one.
+func davClient() (*webdav.Client, error) {
+	c, pass, err := secret.LoadWebDAV()
+	if err != nil {
+		return nil, err
+	}
+	return webdav.New(c, pass), nil
 }
 
 func passphrase() (*vault.Passphrase, error) {
@@ -163,6 +194,9 @@ func storeForVault() (vault.Store, error) {
 	if d := os.Getenv("OROS_DRIVE_STORE_DIR"); d != "" {
 		return vault.NewDirStore(d), nil
 	}
+	if c, err := davClient(); err == nil {
+		return c, nil
+	}
 	return client()
 }
 
@@ -194,7 +228,14 @@ func openURL(u string) error { return app.Open(u) }
 func cmdLogin(args []string) error {
 	fs := flag.NewFlagSet("login", flag.ExitOnError)
 	paste := fs.Bool("paste", false, "show a link and paste the code back (no browser on this machine)")
+	nc := fs.String("nextcloud", "", "your Nextcloud server's address")
+	dav := fs.String("webdav", "", "the WebDAV address of your files")
+	user := fs.String("user", "", "WebDAV user name")
+	dir := fs.String("dir", "", "folder on the server (default /orOS)")
 	fs.Parse(args)
+	if *nc != "" || *dav != "" {
+		return loginWebDAV(*nc, *dav, *user, *dir)
+	}
 	c := dropbox.New(dropbox.Tokens{})
 	p := dropbox.NewPKCE()
 	var code string
@@ -237,6 +278,7 @@ func cmdLogin(args []string) error {
 	if err := secret.SaveTokens(t); err != nil {
 		return err
 	}
+	_ = secret.DeleteWebDAV()
 	if a, err := c.CurrentAccount(); err == nil {
 		fmt.Printf("Signed in as %s (%s).\n", a.Name, a.Email)
 	} else {
@@ -245,10 +287,59 @@ func cmdLogin(args []string) error {
 	return nil
 }
 
+// loginWebDAV connects a Nextcloud (Login Flow v2) or a WebDAV folder.
+// The server is checked first (webdav.Probe); nothing is saved when it
+// fails.
+func loginWebDAV(nc, dav, user, dir string) error {
+	var c *webdav.Client
+	if nc != "" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		l, err := webdav.StartNextcloud(ctx, nc, dir)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Approve orOS Drive on your Nextcloud page. If nothing opens, visit:")
+		fmt.Println(l.URL)
+		_ = openURL(l.URL)
+		if c, err = l.Wait(ctx); err != nil {
+			return err
+		}
+	} else {
+		conf, err := webdav.NormConf(dav, user, dir)
+		if err != nil {
+			return err
+		}
+		pass := os.Getenv("OROS_DAV_PASSWORD")
+		if pass == "" && term.IsTerminal(int(os.Stdin.Fd())) {
+			fmt.Fprint(os.Stderr, "App password: ")
+			b, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return err
+			}
+			pass = string(b)
+		}
+		if c, err = webdav.Connect(conf, pass); err != nil {
+			return err
+		}
+	}
+	if err := secret.SaveWebDAV(c.Conf, c.Pass); err != nil {
+		return err
+	}
+	_ = secret.DeleteTokens()
+	fmt.Printf("Connected to %s.\n", c.Conf.Account())
+	return nil
+}
+
 func cmdLogout() error {
 	if c, err := client(); err == nil {
 		_ = c.Revoke()
 	}
+	if c, err := davClient(); err == nil {
+		_ = c.Revoke()
+	}
+	_ = secret.DeleteWebDAV()
 	_ = secret.DeleteVaultKey()
 	if err := secret.DeleteTokens(); err != nil {
 		return err
@@ -258,7 +349,9 @@ func cmdLogout() error {
 }
 
 func cmdStatus() error {
-	if os.Getenv("OROS_DRIVE_STORE_DIR") == "" {
+	if d, err := davClient(); err == nil && os.Getenv("OROS_DRIVE_STORE_DIR") == "" {
+		fmt.Printf("WebDAV:   %s\n", d.Conf.Account())
+	} else if os.Getenv("OROS_DRIVE_STORE_DIR") == "" {
 		c, err := client()
 		if err != nil {
 			return err

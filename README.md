@@ -1,14 +1,14 @@
 # orOS Drive
 
-Mirror chosen folders of your computer or phone into the encrypted [orOS](https://useoros.online) Vault, and later see the orOS disk as a drive. The Vault lives in your own Dropbox, end-to-end encrypted: Dropbox sees neither file names nor contents. Windows, Linux and Android. MIT, free forever.
+Mirror chosen folders of your computer or phone into the encrypted [orOS](https://useoros.online) Vault, and later see the orOS disk as a drive. The Vault lives in your own Dropbox or on your own WebDAV server (Nextcloud, ownCloud, Synology, QNAP…), end-to-end encrypted: the cloud sees neither file names nor contents. Windows, Linux and Android. MIT, free forever.
 
-**Status: all 7 waves.** The desktop app mirrors folders both ways between Windows or Linux and the Vault, and the orOS Android app mirrors phone folders (wave 4). orOS shows them in Files › orOS Drive and downloads a file only when you open it. The whole orOS disk can also appear as a folder: on Linux (wave 5), in Windows Explorer (wave 6), and on Android as "orOS" in the Files app (wave 5). Settings › "Space in Dropbox" shows what the vault takes and removes content no file has used for 30 days (wave 7).
+**Status: all 7 waves.** The desktop app mirrors folders both ways between Windows or Linux and the Vault, and the orOS Android app mirrors phone folders (wave 4). orOS shows them in Files › orOS Drive and downloads a file only when you open it. The whole orOS disk can also appear as a folder: on Linux (wave 5), in Windows Explorer (wave 6), and on Android as "orOS" in the Files app (wave 5). Settings › "Space in Dropbox" (or your server) shows what the vault takes and removes content no file has used for 30 days (wave 7).
 
 ## The app
 
 On Windows run `orOS-Drive-Setup-<version>.exe` (no administrator rights needed; it adds orOS Drive to the Start menu and, if you keep the box ticked, starts it when you sign in), or unzip the portable zip and start `orOS Drive.exe`. On Linux install the .deb (it adds orOS Drive to the menu) or run `orosdrive` from the tarball. The settings open in your browser:
 
-1. **Sign in to Dropbox**, the account orOS syncs with. Sign-in comes back to `http://localhost:47800/` (the address orOS Portable also uses, so close Portable for that moment).
+1. **Sign in to the cloud orOS syncs with.** Dropbox: sign-in comes back to `http://localhost:47800/` (the address orOS Portable also uses, so close Portable for that moment). Your own server (orOS › Settings › Sync › WebDAV): "Sign in with Nextcloud" opens your server's page to approve orOS Drive, which then gets an app password of its own; for any other WebDAV server type its full WebDAV address, your user name and an app password. Use the same folder as orOS (default `/orOS`).
 2. **Unlock the vault** with your orOS sync passphrase. It unwraps the vault key, which goes into the system keychain (Windows Credential Manager, the Secret Service on Linux). The passphrase itself is never stored. Without a keychain (a Linux server) the key is kept in a file only you can read, and the page says so.
 3. **Add folders.** Each one appears in orOS under `Drive/<this computer>/<folder>`.
 
@@ -35,6 +35,9 @@ Settings › "The orOS disk as a folder" (or `orosdrive mount`) shows the whole 
 orosdrive [run] [--no-tray] [--background]   the app (no tray: servers)
 orosdrive open                    open the settings page of the running app
 orosdrive login [--paste]         sign in to the Dropbox orOS syncs with
+orosdrive login --nextcloud <server> [--dir /orOS]
+orosdrive login --webdav <url> --user <name> [--dir /orOS]
+                                  your own server (app password asked, or OROS_DAV_PASSWORD)
 orosdrive unlock                  unlock with the orOS sync passphrase
 orosdrive add [--name N] <folder> mirror a folder
 orosdrive folders | remove <name> | sync
@@ -42,7 +45,7 @@ orosdrive status                  account and vault summary
 orosdrive ls [-l] [path]          list the orOS disk, e.g. `orosdrive ls -l Docs`
 orosdrive pull <path> <dir>       copy a file or folder out of the Vault
 orosdrive mount [<folder> | off]  show the whole orOS disk as a folder (Linux, Windows)
-orosdrive usage [--clean]         space in Dropbox; --clean removes content unused for 30 days
+orosdrive usage [--clean]         space in the cloud; --clean removes content unused for 30 days
 orosdrive logout
 ```
 
@@ -58,7 +61,7 @@ The app asks GitHub once a day whether a newer release exists and, if so, shows 
 
 ## How it works
 
-orOS keeps your disk in `/vault` of its Dropbox app folder (the format is described in `OROS_BIBLE.md` of [koulaxizis/oros](https://github.com/koulaxizis/oros), section "vault.js"):
+orOS keeps your disk in `/vault` of its Dropbox app folder, or in `<folder>/vault` on a WebDAV server (the format is described in `OROS_BIBLE.md` of [koulaxizis/oros](https://github.com/koulaxizis/oros), section "vault.js"):
 
 - `key.json`: one random 32-byte vault key, wrapped with your sync passphrase (PBKDF2-SHA-256, 600,000 rounds, AES-GCM). A passphrase change re-wraps it; the key itself stays.
 - `manifest.json`: AES-GCM sealed list of every file (path, SHA-256, size, date).
@@ -66,17 +69,20 @@ orOS keeps your disk in `/vault` of its Dropbox app folder (the format is descri
 
 Deleted and replaced files leave their objects behind (orOS itself never removes them). The clean-up removes only objects under `objects/` that no manifest entry names (by either name an entry can have) and that Dropbox stored more than 30 days ago. It removes nothing without a manifest, nothing when fewer than nine in ten of the named objects are listed (a partial listing or a wrong key), and stops as soon as the manifest changes. It never runs on its own.
 
+On WebDAV the ETag is the revision: the manifest is written with `If-Match` (or `If-None-Match: *` for the first one), exactly like orOS. Before anything is saved, orOS Drive checks the server the way orOS does: it must answer WebDAV, let it write, refuse a stale `If-Match` and a second create, and give a new strong ETag for every write. A server that fails (for example one whose ETags change only once a second) is refused with one sentence saying why, because two devices could otherwise overwrite each other. Big content goes up in pieces on Nextcloud. Signing in to a different cloud makes the next pass a first sync for every folder, so nothing is deleted because the new cloud lacks it.
+
 orOS Drive implements the same format and the same rules (conditional writes on the manifest revision, a downloaded file must match its hash, an absent manifest deletes nothing), in Go:
 
 | Package | |
 |---|---|
 | `vault/` | crypto, key file, manifest, download/upload, `DirStore` (a vault in a folder) |
 | `dropbox/` | Dropbox API v2: PKCE sign-in, refresh, conditional uploads, upload sessions, retries |
+| `webdav/` | WebDAV and Nextcloud: the server check, ETag conditional writes, chunked uploads, Login Flow v2; `webdav/davtest` is a fake server for tests |
 | `mirror/` | the two-way mirror: scan, three-way merge per file, conflict copies, trash, safety limits |
 | `vdisk/` | the whole disk as a file system: on-demand downloads, cache, conflict-safe writes; `vdisk/fusefs` mounts it on Linux, `vdisk/cloudfiles` shows it in Windows Explorer |
 | `mobile/` | the API the orOS Android app binds with gomobile (phone folders, the Files-app provider) |
 | `app/` | the desktop app: background loop, folder watcher, settings page (`app/web`), tray, autostart |
-| `internal/secret/` | keychain storage for the Dropbox sign-in and the vault key |
+| `internal/secret/` | keychain storage for the cloud sign-in (Dropbox token or WebDAV app password) and the vault key |
 | `internal/config/` | settings (`app.json`) and per-folder state |
 | `cmd/orosdrive/` | the program: the app and the command line |
 | `packaging/` | release files (`package.sh`), the Windows setup (`windows/oros-drive.iss`, tested by `windows/test-setup.ps1`) and the smoke test CI runs on Windows and Linux |
@@ -86,7 +92,9 @@ orOS Drive implements the same format and the same rules (conditional writes on 
 
 ```
 go test ./...                               # unit tests, golden vaults written by vault.js
-OROS_SRC=../oros go test ./interop/         # against the live orOS code (needs Node)
+OROS_SRC=../oros go test ./interop/         # against the live orOS code (needs Node), on Dropbox and WebDAV
+OROS_DAV_TEST_URL=https://… OROS_DAV_TEST_USER=… OROS_DAV_TEST_PASS=… go test -run RealServer ./webdav/
+                                            # the server check and every store promise on a real server
 ```
 
 CI runs both on every push, the interop job with `sync.js` and `vault.js` from orOS `main`, so a format change in orOS that this code does not follow turns CI red.

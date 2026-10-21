@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Record is what the engine remembers about one file of a mirrored
@@ -83,4 +84,50 @@ func DeleteState(dir, id string) error {
 		return nil
 	}
 	return err
+}
+
+const cloudFile = "cloud"
+
+// NoteCloud records which cloud the folders in dir sync with (orOS
+// sync.js noteCloud). When it changes (Dropbox to WebDAV, another
+// server), what was synced with the old cloud says nothing about the
+// new one: every folder forgets its Base and its kept conflicts, so
+// the first pass with the new cloud is a first sync and deletes
+// nothing. States from before the marker belong to "dropbox".
+func NoteCloud(dir, id string) (changed bool, err error) {
+	p := filepath.Join(dir, cloudFile)
+	prev := "dropbox"
+	if b, err := os.ReadFile(p); err == nil {
+		prev = strings.TrimSpace(string(b))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	if prev == id {
+		return false, nil
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	for _, e := range ents {
+		fid, ok := strings.CutSuffix(e.Name(), ".json")
+		if !ok || e.IsDir() {
+			continue
+		}
+		st, err := LoadState(dir, fid)
+		if err != nil {
+			return false, err
+		}
+		for _, r := range st.Files {
+			r.Base = ""
+		}
+		st.Conflicts = map[string]string{}
+		if err := st.Save(dir, fid); err != nil {
+			return false, err
+		}
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return true, err
+	}
+	return true, os.WriteFile(p, []byte(id+"\n"), 0o600)
 }
