@@ -1,0 +1,6 @@
+// orOS Drive for Android (online.useoros.drive): the Go core of this
+// repository (mobile/, bound with gomobile into app/libs/orosdrive.aar)
+// in a small native app. See android/README.md.
+plugins {
+    id 'com.android.application' version '8.9.1' apply false
+}

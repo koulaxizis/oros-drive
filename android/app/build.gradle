@@ -1,0 +1,79 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The version is the release's ("0.4.0" → versionCode 4000), from
+// DRIVE_VERSION (the Release workflow and koulaxizis/oros android.yml
+// set it). A build without it is 0.0.0 and never replaces a release.
+def driveVersion = {
+    def v = System.getenv('DRIVE_VERSION') ?: '0.0.0'
+    def m = (v =~ /^v?(\d+)\.(\d+)\.(\d+)$/)
+    if (!m.find()) throw new GradleException("DRIVE_VERSION must look like 1.2.3, not ${v}")
+    [name: "${m.group(1)}.${m.group(2)}.${m.group(3)}",
+     code: Math.max(1, (m.group(1) as int) * 1000000 + (m.group(2) as int) * 1000 + (m.group(3) as int))]
+}()
+
+// The Go core must be there: build it first (README).
+if (!file('libs/orosdrive.aar').exists()) {
+    throw new GradleException('app/libs/orosdrive.aar is missing: build it with gomobile first (android/README.md)')
+}
+
+// Release signing comes from the environment (GitHub secrets in CI).
+def ks = System.getenv('OROS_KEYSTORE_FILE')
+
+android {
+    namespace 'online.useoros.drive.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'online.useoros.drive'
+        minSdk 24
+        targetSdk 36
+        versionCode driveVersion.code
+        versionName driveVersion.name
+    }
+
+    signingConfigs {
+        if (ks) {
+            release {
+                storeFile file(ks)
+                storePassword System.getenv('OROS_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('OROS_KEY_ALIAS')
+                keyPassword System.getenv('OROS_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Own id: installs next to the real app.
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (ks) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // F-Droid: no Google dependency information block in the APK.
+    dependenciesInfo {
+        includeInApk false
+        includeInBundle false
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation files('libs/orosdrive.aar')
+    implementation 'androidx.work:work-runtime:2.10.1'
+    implementation 'androidx.browser:browser:1.8.0'
+}

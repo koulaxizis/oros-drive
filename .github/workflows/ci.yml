@@ -35,6 +35,7 @@ jobs:
           go test -count=1 -v -run TestExplorerFolder ./vdisk/cloudfiles/ ./app/
       - name: Smoke test of the real app
         shell: bash
+        timeout-minutes: 5
         run: |
           go build -o smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/orosdrive
           packaging/smoke.sh smoke-bin/orosdrive${{ runner.os == 'Windows' && '.exe' || '' }}
@@ -94,9 +95,11 @@ jobs:
           name: orosdrive
           path: out/
 
-  # The Android library the orOS Android app embeds (wave 4): proves
-  # mobile/ binds with gomobile. koulaxizis/oros android.yml runs the
-  # same command on a pinned commit of this repo.
+  # orOS Drive for Android (android/): the Go core bound with gomobile
+  # into app/libs/orosdrive.aar, then the app built with Gradle. The
+  # orOS Android app embeds the same library (koulaxizis/oros
+  # android.yml, pinned commit); signed release APKs are built there
+  # with the orOS key and go to the orOS F-Droid repo.
   android:
     runs-on: ubuntu-latest
     steps:
@@ -108,14 +111,27 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
       - name: gomobile bind
         run: |
           go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
-          mkdir -p out
-          gomobile bind -target=android -androidapi 24 -javapkg online.useoros.drive -o out/orosdrive.aar ./mobile
-          unzip -l out/orosdrive.aar | grep -E 'classes.jar|libgojni.so'
+          mkdir -p out android/app/libs
+          gomobile bind -target=android/arm64,android/arm,android/amd64 -androidapi 24 -javapkg online.useoros.drive -o android/app/libs/orosdrive.aar ./mobile
+          unzip -l android/app/libs/orosdrive.aar | grep -E 'classes.jar|libgojni.so'
+          cp android/app/libs/orosdrive.aar out/
+      - name: Build the app (debug + unsigned release)
+        run: gradle -p android --no-daemon assembleDebug assembleRelease
+        env:
+          DRIVE_VERSION: 0.0.1
       - uses: actions/upload-artifact@v4
         with:
           name: orosdrive-aar
           path: out/orosdrive.aar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orosdrive-android
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
