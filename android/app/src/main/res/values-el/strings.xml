@@ -93,4 +93,27 @@
     <string name="dav_connected">Αποσυνδέσου πρώτα από το τρέχον cloud.</string>
     <string name="dav_notnextcloud">Αυτή η διεύθυνση δεν είναι server Nextcloud.</string>
     <string name="dav_login_expired">Η σύνδεση δεν εγκρίθηκε εγκαίρως. Δοκίμασε ξανά.</string>
+    <string name="drive_share_title">Αποστολή στο orOS</string>
+    <string name="drive_share_copying">Ετοιμάζονται τα αρχεία…</string>
+    <string name="drive_share_nothing">Δεν υπάρχει κάτι εδώ για αποστολή στο orOS.</string>
+    <string name="drive_share_locked">Άνοιξε πρώτα το orOS Drive, συνδέσου και ξεκλείδωσέ το, και μετά κοινοποίησε ξανά.</string>
+    <string name="drive_share_here">Ανέβασμα εδώ</string>
+    <string name="drive_share_queued">Ανέβασμα στο %1$s στο παρασκήνιο.</string>
+    <plurals name="drive_share_count">
+        <item quantity="one">%d αρχείο για αποστολή. Διάλεξε φάκελο στο orOS:</item>
+        <item quantity="other">%d αρχεία για αποστολή. Διάλεξε φάκελο στο orOS:</item>
+    </plurals>
+    <string name="drive_upload_title">Ανέβασμα στο orOS</string>
+    <string name="drive_upload_progress">%1$d από %2$d: %3$s</string>
+    <string name="drive_upload_done">Στάλθηκαν %1$d στο %2$s.</string>
+    <string name="drive_upload_dropped">Δεν στάλθηκαν (πολύ μεγάλα ή με όνομα που δεν δέχεται το orOS): %1$s</string>
+    <string name="drive_upload_waiting">%1$d σε αναμονή (%2$s). Θα σταλούν μόλις γίνει.</string>
+    <string name="drive_camera">Αντίγραφα των νέων φωτογραφιών και βίντεο της κάμερας</string>
+    <string name="drive_camera_where">Οι νέες φωτογραφίες και τα βίντεο πηγαίνουν στο orOS › Drive › αυτό το κινητό › Camera backup. Μόνο ανέβασμα: τίποτα δεν σβήνεται από το κινητό. Βίντεο πάνω από 200 MB παραλείπονται.</string>
+    <string name="drive_camera_denied">Τα αντίγραφα της κάμερας χρειάζονται πρόσβαση στις φωτογραφίες και στα βίντεο.</string>
+    <plurals name="drive_conflict_title">
+        <item quantity="one">Κρατήθηκαν και οι δύο εκδοχές για %d αρχείο</item>
+        <item quantity="other">Κρατήθηκαν και οι δύο εκδοχές για %d αρχεία</item>
+    </plurals>
+    <string name="drive_conflict_text">Άλλαξε και εδώ και αλλού· η άλλη εκδοχή είναι δίπλα του με τη λέξη «conflict» στο όνομα:\n%1$s</string>
 </resources>

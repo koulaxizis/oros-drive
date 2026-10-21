@@ -11,6 +11,11 @@ vault format and the same rules (VD-1, VD-4, VD-H, mirror Base, trash).
   "orOS Drive"), and the app has its own browser.
 - Press and hold a file or folder to keep it offline: it downloads in
   the background and stays up to date; "Offline" lists what is kept.
+- Share › orOS Drive from any app: pick a folder, the files upload in
+  the background with a progress notification. Nothing is replaced.
+- Camera backup (optional): new photos and videos in DCIM go to
+  Drive/<phone>/Camera backup. Upload only; nothing on the phone is deleted.
+- A notification names files kept in both versions after a conflict.
 
 ## Build
 

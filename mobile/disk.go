@@ -191,3 +191,23 @@ func (d *Drive) DiskSyncPins() (string, error) {
 	}
 	return asJSON(st), nil
 }
+
+// DiskPutNew uploads local as a new file named name in dir, never
+// replacing anything ("photo (2).jpg" when the name is taken by other
+// content; nothing written when the same content is there already).
+// For sharing to orOS and camera uploads. Returns JSON (vdisk.Info).
+func (d *Drive) DiskPutNew(dir, name, local string) (string, error) {
+	k, err := d.disk()
+	if err != nil {
+		return "", err
+	}
+	i, err := k.PutNew(dir, name, local)
+	if err != nil {
+		return "", diskErr(err)
+	}
+	return asJSON(i), nil
+}
+
+// CameraDir is the disk folder camera uploads go to
+// ("/internal/Drive/<device>/Camera backup").
+func (d *Drive) CameraDir() string { return d.s.CameraDir() }

@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"mime"
@@ -687,6 +688,72 @@ func (d *Disk) Put(p, local, base string) (Info, error) {
 	}
 	d.keep(e.H, plain)
 	return d.info(p, e), nil
+}
+
+var errUnchanged = errors.New("nothing to change")
+
+// PutNew stores the content of local as a new file named name in dir
+// and never replaces anything (sharing to orOS, camera uploads): when
+// that name holds the same content already, nothing is written (a
+// retried upload); when it holds something else, the file becomes
+// "name (2).ext", "name (3).ext", ... It returns the file as stored.
+func (d *Disk) PutNew(dir, name, local string) (Info, error) {
+	if dir = Clean(dir); dir == "" || name == "" || strings.ContainsAny(name, "/\\\x00") {
+		return Info{}, ErrBadName
+	}
+	if Clean(dir+"/"+name) != dir+"/"+name || !nameOK(dir+"/"+name) {
+		return Info{}, ErrBadName
+	}
+	fi, err := os.Stat(local)
+	if err != nil {
+		return Info{}, err
+	}
+	if fi.Size() > d.maxFile() {
+		return Info{}, ErrTooBig
+	}
+	plain, err := os.ReadFile(local)
+	if err != nil {
+		return Info{}, err
+	}
+	r, err := d.snapshot()
+	if err != nil {
+		return Info{}, err
+	}
+	mt := mime.TypeByExtension(path.Ext(name))
+	if i := strings.IndexByte(mt, ';'); i >= 0 {
+		mt = mt[:i]
+	}
+	e, err := d.Vault.Upload(r, plain, mt)
+	if err != nil {
+		return Info{}, err
+	}
+	ext := path.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	var at string
+	err = d.change(func(files map[string]vault.Entry) error {
+		if _, ok := files[dir]; ok {
+			return ErrNotDir
+		}
+		for n := 1; ; n++ {
+			at = dir + "/" + name
+			if n > 1 {
+				at = fmt.Sprintf("%s/%s (%d)%s", dir, stem, n, ext)
+			}
+			cur, taken := files[at]
+			if taken && cur.H == e.H {
+				return errUnchanged
+			}
+			if !taken && !hasPrefix(files, at) {
+				files[at] = e
+				return nil
+			}
+		}
+	})
+	if err != nil && !errors.Is(err, errUnchanged) {
+		return Info{}, err
+	}
+	d.keep(e.H, plain)
+	return d.info(at, e), nil
 }
 
 // keep puts content just uploaded into the cache, so opening it again

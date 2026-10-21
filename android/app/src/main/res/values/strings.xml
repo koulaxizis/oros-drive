@@ -95,4 +95,27 @@
     <string name="dav_connected">Sign out of the current cloud first.</string>
     <string name="dav_notnextcloud">This address is not a Nextcloud server.</string>
     <string name="dav_login_expired">The sign-in was not approved in time. Try again.</string>
+    <string name="drive_share_title">Send to orOS</string>
+    <string name="drive_share_copying">Getting the files ready…</string>
+    <string name="drive_share_nothing">There is nothing here to send to orOS.</string>
+    <string name="drive_share_locked">Open orOS Drive, sign in and unlock it first, then share again.</string>
+    <string name="drive_share_here">Upload here</string>
+    <string name="drive_share_queued">Uploading to %1$s in the background.</string>
+    <plurals name="drive_share_count">
+        <item quantity="one">%d file to send. Pick a folder in orOS:</item>
+        <item quantity="other">%d files to send. Pick a folder in orOS:</item>
+    </plurals>
+    <string name="drive_upload_title">Upload to orOS</string>
+    <string name="drive_upload_progress">%1$d of %2$d: %3$s</string>
+    <string name="drive_upload_done">%1$d sent to %2$s.</string>
+    <string name="drive_upload_dropped">Could not be sent (too big, or a name orOS cannot hold): %1$s</string>
+    <string name="drive_upload_waiting">%1$d waiting (%2$s). They go as soon as possible.</string>
+    <string name="drive_camera">Back up new photos and videos from the camera</string>
+    <string name="drive_camera_where">New photos and videos go to orOS › Drive › this phone › Camera backup. Only uploads: nothing on the phone is deleted. Videos over 200 MB are left out.</string>
+    <string name="drive_camera_denied">Camera backup needs access to photos and videos.</string>
+    <plurals name="drive_conflict_title">
+        <item quantity="one">Both versions kept of %d file</item>
+        <item quantity="other">Both versions kept of %d files</item>
+    </plurals>
+    <string name="drive_conflict_text">It changed here and elsewhere; the other version is next to it with \"conflict\" in its name:\n%1$s</string>
 </resources>

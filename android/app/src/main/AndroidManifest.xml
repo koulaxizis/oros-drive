@@ -3,10 +3,17 @@
      its own components and permissions. DriveProvider shows the whole
      orOS disk as "orOS" in the Files app and in every file picker;
      only the system's documents UI may bind to it (MANAGE_DOCUMENTS),
-     and BrowseActivity hands single files to other apps by URI grant. -->
+     and BrowseActivity hands single files to other apps by URI grant.
+     ShareActivity takes files shared from other apps (upload only). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Camera backup (wave 4), asked only when the person turns it on;
+         read only: the app never changes or deletes a photo. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
         android:allowBackup="false"
@@ -26,6 +33,22 @@
             android:exported="false"
             android:label="@string/drive_browse"
             android:parentActivityName=".MainActivity" />
+        <!-- "Share › orOS Drive" from any app (wave 4) -->
+        <activity android:name=".ShareActivity"
+            android:exported="true"
+            android:label="@string/drive_title"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
         <provider android:name=".DriveProvider"
             android:authorities="${applicationId}.drive"
             android:grantUriPermissions="true"
