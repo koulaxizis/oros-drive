@@ -12,7 +12,7 @@ On Windows run `orOS-Drive-Setup-<version>.exe` (no administrator rights needed;
 2. **Unlock the vault** with your orOS sync passphrase. It unwraps the vault key, which goes into the system keychain (Windows Credential Manager, the Secret Service on Linux). The passphrase itself is never stored. Without a keychain (a Linux server) the key is kept in a file only you can read, and the page says so.
 3. **Add folders.** Each one appears in orOS under `Drive/<this computer>/<folder>`.
 
-The app then lives in the tray (on GNOME the tray needs the AppIndicator extension; without it the settings page is the way in), starts at login if you tick it, and syncs when a mirrored folder changes, when the Vault changes (checked every 30 seconds) and every 10 minutes.
+The app then lives in the tray, as the orOS mark in reverse colours (a gold tile, so it is not mistaken for the orOS app's dark one) with a dot for the state (on GNOME the tray needs the AppIndicator extension; without it the settings page is the way in), starts at login if you tick it, and syncs when a mirrored folder changes, when the Vault changes (checked every 30 seconds) and every 10 minutes.
 
 ### What happens to your files
 
