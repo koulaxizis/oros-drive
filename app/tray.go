@@ -136,7 +136,9 @@ func (t *Tray) refresh() {
 	}
 }
 
-// trayIcon is the orOS mark with a small dot for the state.
+// trayIcon is the orOS mark in reverse colours (gold tile, dark mark),
+// so it is not mistaken for the orOS app's own tray icon next to it,
+// with a small dot for the state.
 func trayIcon(kind string) []byte {
 	src, err := webFS.ReadFile("web/icon.png")
 	if err != nil {
@@ -148,6 +150,7 @@ func trayIcon(kind string) []byte {
 	}
 	const size = 64
 	out := shrink(img, size)
+	reverse(out)
 	dot := map[string]color.RGBA{
 		"sync": {0x4a, 0x90, 0xe2, 0xff}, "warn": {0xe0, 0xa8, 0x4a, 0xff},
 		"bad": {0xe5, 0x48, 0x3d, 0xff}, "paused": {0x9a, 0x9a, 0x9a, 0xff},
@@ -171,6 +174,32 @@ func trayIcon(kind string) []byte {
 		return pngToICO(buf.Bytes(), size)
 	}
 	return buf.Bytes()
+}
+
+// The two colours of the orOS mark (web/icon.png).
+var (
+	markDark = color.NRGBA{0x1b, 0x1a, 0x18, 0xff}
+	markGold = color.NRGBA{0xc8, 0xa9, 0x6e, 0xff}
+)
+
+// reverse swaps the mark's two colours, keeping the soft edges between
+// them and the transparent corners.
+func reverse(img *image.RGBA) {
+	lum := func(c color.NRGBA) int { return 299*int(c.R) + 587*int(c.G) + 114*int(c.B) }
+	lo, hi := lum(markDark), lum(markGold)
+	mix := func(a, b uint8, f int) uint8 { return uint8(int(a) + (int(b)-int(a))*f/1000) }
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+			if c.A == 0 {
+				continue
+			}
+			f := (lum(c) - lo) * 1000 / (hi - lo) // 0 = dark, 1000 = gold
+			f = max(0, min(1000, f))
+			img.Set(x, y, color.NRGBA{mix(markGold.R, markDark.R, f), mix(markGold.G, markDark.G, f), mix(markGold.B, markDark.B, f), c.A})
+		}
+	}
 }
 
 // shrink scales by averaging (box filter): good enough for an icon.
