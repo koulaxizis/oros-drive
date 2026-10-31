@@ -179,7 +179,7 @@ func trayIcon(kind string) []byte {
 // The two colours of the orOS mark (web/icon.png).
 var (
 	markDark = color.NRGBA{0x1b, 0x1a, 0x18, 0xff}
-	markGold = color.NRGBA{0xc8, 0xa9, 0x6e, 0xff}
+	markGold = color.NRGBA{0xd4, 0xaf, 0x37, 0xff}
 )
 
 // reverse swaps the mark's two colours, keeping the soft edges between
