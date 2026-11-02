@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -76,11 +77,81 @@ func cmdRun(args []string) error {
 		}
 		return nil
 	}
-	tray := &app.Tray{S: s, UI: ui}
-	quit = tray.Quit
-	go func() { <-sig; tray.Quit() }()
-	tray.Run()
+	runWithTray(s, ui, sig, func(f func()) { quit = f })
 	return nil
+}
+
+// runWithTray shows the tray icon unless the settings hide it, and
+// blocks until the app should end. Hiding it (settings page) takes the
+// icon away at once and the app goes on; showing it again works at
+// once only if the icon was not shown yet in this run (systray runs
+// once per process), otherwise from the next start. Without the icon,
+// starting orOS Drive again opens the settings page (app.Running).
+func runWithTray(s *app.Service, ui *app.UI, sig <-chan os.Signal, setQuit func(func())) {
+	end := make(chan struct{})
+	var endOnce sync.Once
+	var mu sync.Mutex
+	var current *app.Tray // the icon while it shows
+	hiding := false
+	stop := func() {
+		endOnce.Do(func() { close(end) })
+		mu.Lock()
+		t := current
+		mu.Unlock()
+		if t != nil {
+			t.Quit()
+		}
+	}
+	setQuit(stop)
+	wake := make(chan struct{}, 1)
+	s.OnChange(func() {
+		if s.Status().Settings.NoTray {
+			mu.Lock()
+			t := current
+			if t != nil {
+				hiding = true
+			}
+			mu.Unlock()
+			if t != nil {
+				t.Quit()
+			}
+		}
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	})
+	go func() { <-sig; stop() }()
+	shown := false
+	for {
+		select {
+		case <-end:
+			return
+		default:
+		}
+		if !shown && !s.Status().Settings.NoTray {
+			shown = true
+			t := &app.Tray{S: s, UI: ui}
+			mu.Lock()
+			current = t
+			mu.Unlock()
+			t.Run()
+			mu.Lock()
+			current = nil
+			hid := hiding
+			mu.Unlock()
+			if !hid { // Quit in the menu, a signal or the settings page
+				stop()
+				return
+			}
+			continue
+		}
+		select {
+		case <-end:
+			return
+		case <-wake:
+		}
+	}
 }
 
 func cmdOpen() error {

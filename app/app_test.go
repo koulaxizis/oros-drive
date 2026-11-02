@@ -249,3 +249,34 @@ func TestUsageAndCleanUpFromThePage(t *testing.T) {
 		t.Fatal(string(b), err)
 	}
 }
+
+// The tray icon setting is kept, and the app hears about it at once
+// (cmd/orosdrive hides the icon from the change callback).
+func TestTraySettingIsKeptAndAnnounced(t *testing.T) {
+	s, _ := newService(t)
+	if s.Status().Settings.NoTray {
+		t.Fatal("the icon shows by default")
+	}
+	heard := make(chan bool, 4)
+	s.OnChange(func() { heard <- s.Status().Settings.NoTray })
+	s.OnChange(func() {}) // a second listener (the tray) does not replace the first
+	off := false
+	if err := s.SetPrefs(Prefs{Tray: &off}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case noTray := <-heard:
+		if !noTray {
+			t.Fatal("the change callback saw the icon still on")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("hiding the icon was not announced")
+	}
+	s2, err := NewService("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s2.Status().Settings.NoTray {
+		t.Fatal("the setting was not saved")
+	}
+}
