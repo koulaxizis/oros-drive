@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -426,26 +425,4 @@ func roots(home string) []string {
 		}
 	}
 	return out
-}
-
-// Open opens a link or a folder with the system's handler.
-func Open(target string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		if strings.HasPrefix(target, "http") {
-			cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
-		} else {
-			cmd = exec.Command("explorer", target)
-		}
-	case "darwin":
-		cmd = exec.Command("open", target)
-	default:
-		cmd = exec.Command("xdg-open", target)
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	go cmd.Wait()
-	return nil
 }

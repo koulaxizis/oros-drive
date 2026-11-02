@@ -280,3 +280,20 @@ func TestTraySettingIsKeptAndAnnounced(t *testing.T) {
 		t.Fatal("the setting was not saved")
 	}
 }
+
+func TestWebLink(t *testing.T) {
+	for in, want := range map[string]bool{
+		"https://www.dropbox.com/oauth2/authorize?x=1": true,
+		"http://127.0.0.1:4321/":                       true,
+		"HTTPS://cloud.example.org/login/v2/flow/abc":  true,
+		`C:\Users\me\orOS`:                             false,
+		"httpfoo.exe":                                  false,
+		"file:///C:/Windows/System32/calc.exe":         false,
+		"https:":                                       false,
+		"":                                             false,
+	} {
+		if got := webLink(in); got != want {
+			t.Errorf("webLink(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

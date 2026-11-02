@@ -19,13 +19,19 @@ notices="$out/THIRD-PARTY-NOTICES.txt"
 cp "$notices" "$setup/files/THIRD-PARTY-NOTICES.txt"
 echo "$v" > "$setup/VERSION"
 work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
+trap 'rm -rf "$work" "$root"/cmd/orosdrive/rsrc_windows_*.syso' EXIT
 ld="-s -w -X main.version=$v"
 
 for arch in amd64 arm64; do
   d="$work/win-$arch"; mkdir -p "$d"
+  # Version information, manifest and icon inside each exe (packaging/winres).
+  winres() { go run "$root/packaging/winres" -arch "$arch" -version "$v" -name "$1" -desc "$2" \
+    -ico "$root/packaging/windows/oros-drive.ico" -out "$root/cmd/orosdrive/rsrc_windows_$arch.syso"; }
+  winres orosdrive.exe "orOS Drive (command line)"
   CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ld" -o "$d/orosdrive.exe" "$root/cmd/orosdrive"
+  winres "orOS Drive.exe" "orOS Drive"
   CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -ldflags "$ld -H=windowsgui" -o "$d/orOS Drive.exe" "$root/cmd/orosdrive"
+  rm "$root/cmd/orosdrive/rsrc_windows_$arch.syso"
   cp "$root/LICENSE" "$d/LICENSE.txt"
   cp "$notices" "$d/THIRD-PARTY-NOTICES.txt"
   cat > "$d/README.txt" <<TXT
