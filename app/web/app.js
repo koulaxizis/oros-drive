@@ -53,6 +53,8 @@ var T = {
     settings: "Settings", device: "This computer's name in orOS", maxFile: "Largest file to upload (MB)",
     maxDeletes: "Ask before deleting more than (files)", lang: "Language", autostart: "Start at login", save: "Save", saved: "Saved.",
     updateCheck: "Tell me about new versions (asks GitHub once a day)",
+    tray: "Show the icon in the tray",
+    trayNote: "Without the icon, orOS Drive keeps syncing; open orOS Drive again from the Start menu (or the applications menu) to reach these settings. Turned back on, the icon comes back at the next start.",
     updateText: "orOS Drive {v} is available. Install it over this one: your folders and settings stay.", updateBtn: "Download page",
     openOros: "Open orOS", openTrash: "Open the trash", lock: "Forget the vault key", logout: "Sign out", quit: "Quit orOS Drive",
     lockAsk: "Forget the vault key? The mirror stops until you type the passphrase again.",
@@ -124,6 +126,8 @@ var T = {
     settings: "Ρυθμίσεις", device: "Όνομα αυτού του υπολογιστή στο orOS", maxFile: "Μεγαλύτερο αρχείο για ανέβασμα (MB)",
     maxDeletes: "Ερώτηση πριν σβηστούν πάνω από (αρχεία)", lang: "Γλώσσα", autostart: "Εκκίνηση με τη σύνδεση", save: "Αποθήκευση", saved: "Αποθηκεύτηκε.",
     updateCheck: "Ειδοποίηση για νέες εκδόσεις (ρωτά το GitHub μία φορά τη μέρα)",
+    tray: "Εικονίδιο στο tray",
+    trayNote: "Χωρίς το εικονίδιο το orOS Drive συνεχίζει τον συγχρονισμό· άνοιξε ξανά το orOS Drive από το μενού Έναρξη (ή το μενού εφαρμογών) για αυτές τις ρυθμίσεις. Αν το ξανανάψεις, το εικονίδιο επιστρέφει στην επόμενη εκκίνηση.",
     updateText: "Υπάρχει νέα έκδοση, το orOS Drive {v}. Εγκατέστησέ τη πάνω από αυτή: οι φάκελοι και οι ρυθμίσεις μένουν.", updateBtn: "Σελίδα λήψης",
     openOros: "Άνοιγμα orOS", openTrash: "Άνοιγμα κάδου", lock: "Ξέχνα το κλειδί του Vault", logout: "Αποσύνδεση", quit: "Έξοδος από το orOS Drive",
     lockAsk: "Να ξεχαστεί το κλειδί του Vault; Το mirror σταματά μέχρι να γράψεις ξανά το συνθηματικό.",
@@ -231,6 +235,7 @@ function render() {
     $("p-lang").value = s.settings.lang || "";
     $("p-autostart").checked = !!s.autostart;
     $("p-update").checked = !s.settings.noUpdateCheck;
+    $("p-tray").checked = !s.settings.noTray;
   }
   $("p-device").disabled = (s.settings.folders || []).length > 0;
   renderDisk();
@@ -457,7 +462,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var body = {
       maxFileMB: parseInt($("p-maxfile").value, 10), maxDeletes: parseInt($("p-maxdel").value, 10),
       lang: $("p-lang").value, autostart: $("p-autostart").checked,
-      updateCheck: $("p-update").checked
+      updateCheck: $("p-update").checked, tray: $("p-tray").checked
     };
     if (!$("p-device").disabled) body.device = $("p-device").value;
     api("prefs", body).then(function () { editingPrefs = false; msg("prefs-msg", t("saved")); refresh(); })

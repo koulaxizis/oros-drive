@@ -37,6 +37,9 @@ type Settings struct {
 	// NoUpdateCheck: never ask GitHub for a newer release (UPD-1).
 	NoUpdateCheck bool   `json:"noUpdateCheck,omitempty"`
 	Mount         string `json:"mount,omitempty"` // folder showing the whole orOS disk (Linux); "" = off
+	// NoTray: no icon in the system tray; starting the app again opens
+	// the settings page (fewer icons next to orOS's own).
+	NoTray bool `json:"noTray,omitempty"`
 }
 
 func settingsFile() (string, error) {

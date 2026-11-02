@@ -89,7 +89,7 @@ type Service struct {
 
 	kick      chan struct{}
 	changed   chan struct{} // settings changed: rebuild the watcher
-	onChange  func()        // tray refresh
+	onChange  []func()      // tray refresh, the tray switch
 	updateNow chan struct{} // the release check was turned back on
 }
 
@@ -156,18 +156,18 @@ func (s *Service) cloudID() string {
 	return "dropbox"
 }
 
-// OnChange registers a callback for status changes (the tray).
+// OnChange adds a callback for status changes (the tray, the tray switch).
 func (s *Service) OnChange(f func()) {
 	s.mu.Lock()
-	s.onChange = f
+	s.onChange = append(s.onChange, f)
 	s.mu.Unlock()
 }
 
 func (s *Service) notify() {
 	s.mu.Lock()
-	f := s.onChange
+	fs := append([]func(){}, s.onChange...)
 	s.mu.Unlock()
-	if f != nil {
+	for _, f := range fs {
 		f()
 	}
 }
@@ -643,6 +643,8 @@ type Prefs struct {
 	Mount      *string `json:"mount,omitempty"` // "" = off
 	// UpdateCheck turns the daily new-release check on or off (UPD-1).
 	UpdateCheck *bool `json:"updateCheck,omitempty"`
+	// Tray shows or hides the icon in the system tray.
+	Tray *bool `json:"tray,omitempty"`
 }
 
 // SetPrefs applies changed settings. The device name can change only
@@ -713,8 +715,16 @@ func (s *Service) SetPrefs(p Prefs) error {
 		}
 		s.settings.NoAutostart = !*p.Autostart
 	}
+	trayChanged := false
+	if p.Tray != nil && s.settings.NoTray != !*p.Tray {
+		s.settings.NoTray = !*p.Tray
+		trayChanged = true
+	}
 	s.engine = nil // new limits
 	defer s.settingsChanged()
+	if trayChanged {
+		defer func() { go s.notify() }() // the app shows or hides the icon now
+	}
 	return s.settings.Save()
 }
 
