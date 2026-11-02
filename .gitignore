@@ -1,3 +1,4 @@
 smoke-bin/
 out/
 out-setup/
+cmd/orosdrive/*.syso

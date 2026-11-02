@@ -55,6 +55,8 @@ When the app is running, `add`, `remove`, `unlock` and `sync` go through it. `--
 
 Releases (tag `v*`, or Actions › Release › "Run workflow" with a version) carry the Windows setup (one for x64 and ARM64; uninstalling turns a folder showing the orOS disk back into a normal folder and offers to delete the settings and sign-in, never your folders), Windows zips (`orOS Drive.exe` without a console window + `orosdrive.exe` for the terminal), Linux tarballs and `.deb` packages for amd64 and arm64. Every CI run attaches the same files as the `orosdrive` artifact. The Windows exe is not signed yet, so SmartScreen may warn the first time ("More info › Run anyway").
 
+**Check a download.** Every release file is in `SHA256SUMS.txt` and carries a build provenance attestation: `gh attestation verify <file> --repo koulaxizis/oros-drive` proves it was built by the Release workflow from this repository's code (releases after 0.3.2). The build is also reproducible: `go version -m "orOS Drive.exe"` names the commit and Go version, and building that commit with the flags in `packaging/package.sh` gives the same bytes. The exe carries version details and an application manifest (`packaging/winres`), but it is unsigned, so an antivirus may still flag it with a heuristic (a name ending in `!ml`). Check the file as above and report the false positive to the vendor (Microsoft: https://www.microsoft.com/wdsi/filesubmission).
+
 Also on Windows: `scoop bucket add oros-drive https://github.com/koulaxizis/oros-drive` then `scoop install oros-drive` (the portable zip; the bucket in `bucket/` is updated by every release), and `winget install koulaxizis.orOSDrive` once winget-pkgs has accepted it (the Release workflow opens that pull request when the `WINGET_TOKEN` secret is set).
 
 The app asks GitHub once a day whether a newer release exists and, if so, shows its download page in the settings and the tray menu. It never downloads or installs anything by itself; Settings › "Tell me about new versions" turns the check off.
@@ -85,7 +87,7 @@ orOS Drive implements the same format and the same rules (conditional writes on 
 | `internal/secret/` | keychain storage for the cloud sign-in (Dropbox token or WebDAV app password) and the vault key |
 | `internal/config/` | settings (`app.json`) and per-folder state |
 | `cmd/orosdrive/` | the program: the app and the command line |
-| `packaging/` | release files (`package.sh`), the Windows setup (`windows/oros-drive.iss`, tested by `windows/test-setup.ps1`) and the smoke test CI runs on Windows and Linux |
+| `packaging/` | release files (`package.sh`), the Windows version details, manifest and icon inside the exe (`winres`, standard library only), the Windows setup (`windows/oros-drive.iss`, tested by `windows/test-setup.ps1`) and the smoke test CI runs on Windows and Linux |
 | `interop/` | runs the real `sync.js` + `vault.js` in Node to hand vaults back and forth |
 
 ## Tests
