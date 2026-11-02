@@ -275,9 +275,14 @@ func fourPart(v string) string {
 	return fmt.Sprintf("%d.%d.%d.%d", p[0], p[1], p[2], p[3])
 }
 
+// parts reads the numbers of a version. A pre-release or build suffix
+// ("0.3.0-ada4faf", CI builds) is left out of the numbers; the version
+// strings keep it.
 func parts(v string) ([4]uint16, error) {
 	var p [4]uint16
-	fs := strings.Split(strings.TrimPrefix(v, "v"), ".")
+	num, _, _ := strings.Cut(strings.TrimPrefix(v, "v"), "+")
+	num, _, _ = strings.Cut(num, "-")
+	fs := strings.Split(num, ".")
 	if len(fs) < 1 || len(fs) > 4 {
 		return p, fmt.Errorf("bad version %q", v)
 	}

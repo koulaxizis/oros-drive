@@ -34,6 +34,26 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
+func TestVersionParts(t *testing.T) {
+	for in, want := range map[string][4]uint16{
+		"0.3.3":         {0, 3, 3, 0},
+		"v1.2.3":        {1, 2, 3, 0},
+		"0.3.0-ada4faf": {0, 3, 0, 0},
+		"1.2.3+build.7": {1, 2, 3, 0},
+		"1.2.3.4":       {1, 2, 3, 4},
+	} {
+		got, err := parts(in)
+		if err != nil || got != want {
+			t.Errorf("parts(%q) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "1.x", "1.2.3.4.5", "-abc", "70000.0.0"} {
+		if _, err := parts(in); err == nil {
+			t.Errorf("parts(%q) accepted", in)
+		}
+	}
+}
+
 func TestBadInput(t *testing.T) {
 	ico := readIco(t)
 	if _, err := Build("386", Info{"1.0.0", "x.exe", "x"}, ico); err == nil {
