@@ -39,6 +39,10 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=no
+; Tell Explorer to refresh its icon cache after install and uninstall
+; (SHChangeNotify SHCNE_ASSOCCHANGED): the exe keeps its path, so without
+; it Start menu, desktop and taskbar can keep showing the old logo.
+ChangesAssociations=yes
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
