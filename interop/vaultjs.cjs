@@ -206,7 +206,9 @@ async function main() {
     const [stateFile, pass, ...flags] = rest;
     const ctx = await device(pass, stateFile);
     if (flags.includes("--touch")) await ctx.orosVault.touchTree("/internal");
-    const res = await ctx.orosVault.sync("interop");
+    // "manual", like Sync now: since VD-SETTLE (orOS 5.31.00) any other
+    // reason holds files of 256 KB or more until they stop changing.
+    const res = await ctx.orosVault.sync("manual");
     if (flags.includes("--fetch-drive") && typeof ctx.orosVault.remoteOnly === "function") {
       for (const e of ctx.orosVault.remoteOnly()) await ctx.orosVault.fetch(e.path);
     }
