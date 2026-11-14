@@ -363,12 +363,23 @@ func (c *Client) children(rel string) ([]entry, error) {
 
 // ---------- vault.Store ----------
 
+// GetSyncBlob reads orOS's sync blob next to vault/ (vault.BlobReader,
+// SOS-1 signals). A missing blob is (nil, nil).
+func (c *Client) GetSyncBlob() ([]byte, error) {
+	b, _, err := c.download(vault.SyncBlobName)
+	return b, err
+}
+
 // Get downloads a key. A missing key is (nil, "", nil).
 func (c *Client) Get(key string) ([]byte, string, error) {
 	rel, err := keyRel(key)
 	if err != nil {
 		return nil, "", err
 	}
+	return c.download(rel)
+}
+
+func (c *Client) download(rel string) ([]byte, string, error) {
 	res, err := c.req("GET", c.at(rel), nil, nil)
 	if err != nil {
 		return nil, "", err

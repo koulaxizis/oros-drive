@@ -582,7 +582,15 @@ func register(dir string, update bool) error {
 // turned off; call it after Unmount): downloaded files stay as normal
 // files, files never downloaded are removed (they are in orOS), and
 // Windows forgets the folder.
-func Unregister(dir string, statePath string) error {
+func Unregister(dir string, statePath string) error { return unregister(dir, statePath, false) }
+
+// Erase is Unregister after an SOS in orOS (SOS-1): downloaded files go
+// too, since they are copies of the erased orOS disk. Files that were
+// never placeholders (made here, not yet in orOS) stay, like the
+// mirrored folders: they are the person's own, not copies.
+func Erase(dir string, statePath string) error { return unregister(dir, statePath, true) }
+
+func unregister(dir string, statePath string, all bool) error {
 	if ok, err := Registered(dir); err != nil || !ok {
 		return err
 	}
@@ -603,6 +611,10 @@ func Unregister(dir string, statePath string) error {
 			continue
 		}
 		abs := w.abs(rel)
+		if all && !e.Dir {
+			os.Remove(abs)
+			continue
+		}
 		if !e.Dir {
 			if h, err := open(abs, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE); err == nil {
 				attrs, st, _ := handleState(h)

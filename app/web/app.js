@@ -18,6 +18,9 @@ var T = {
     unlockTitle: "Unlock the vault",
     unlockText: "Type your orOS sync passphrase (Settings › Sync in orOS). It opens the vault key, which is kept in this computer's keychain; the passphrase itself is not stored.",
     unlockReset: "The vault in {cloud} was reset or rebuilt. Type the orOS sync passphrase again to continue.",
+    sigErased: "orOS was closed with SOS on {when}. orOS Drive on this computer erased its copies (the disk cache and the orOS folder's downloaded files), forgot the vault key and signed out. Your mirrored folders were left as they are. Sign in again only once you trust the cloud account again.",
+    sigClosed: "orOS in the cloud was closed with SOS from a device orOS Drive cannot confirm. Nothing runs and nothing was deleted here. If it was you, sign out here. If not, someone may have your cloud account: change its password.",
+    sigReset: "orOS was reset on another device. orOS Drive waits and deletes nothing until orOS starts the cloud again.",
     unlockBtn: "Unlock", wrongPass: "This passphrase does not open the vault.",
     noVault: "There is no orOS vault in {cloud} yet. Start one with this passphrase? Use the same passphrase in orOS.",
     createBtn: "Start a new vault",
@@ -91,6 +94,9 @@ var T = {
     unlockTitle: "Ξεκλείδωμα του Vault",
     unlockText: "Γράψε το συνθηματικό συγχρονισμού του orOS (Ρυθμίσεις › Συγχρονισμός στο orOS). Ανοίγει το κλειδί του Vault, που φυλάγεται στο keychain του υπολογιστή· το ίδιο το συνθηματικό δεν αποθηκεύεται.",
     unlockReset: "Το Vault στο {cloud} μηδενίστηκε ή φτιάχτηκε ξανά. Γράψε ξανά το συνθηματικό συγχρονισμού του orOS για να συνεχίσεις.",
+    sigErased: "Το orOS έκλεισε με SOS στις {when}. Το orOS Drive σε αυτόν τον υπολογιστή έσβησε τα αντίγραφά του (την cache του δίσκου και τα κατεβασμένα αρχεία του φακέλου orOS), ξέχασε το κλειδί του Vault και αποσυνδέθηκε. Οι φάκελοι που καθρεφτίζονται έμειναν όπως ήταν. Σύνδεσε ξανά μόνο όταν εμπιστεύεσαι πάλι τον λογαριασμό του cloud.",
+    sigClosed: "Το orOS στο cloud έκλεισε με SOS από μια συσκευή που το orOS Drive δεν μπορεί να επιβεβαιώσει. Εδώ δεν τρέχει τίποτα και δεν σβήστηκε τίποτα. Αν ήσουν εσύ, αποσυνδέσου εδώ. Αν όχι, κάποιος ίσως έχει τον λογαριασμό σου στο cloud: άλλαξε τον κωδικό του.",
+    sigReset: "Το orOS επαναφέρθηκε σε άλλη συσκευή. Το orOS Drive περιμένει και δεν σβήνει τίποτα μέχρι το orOS να ξεκινήσει ξανά το cloud.",
     unlockBtn: "Ξεκλείδωμα", wrongPass: "Αυτό το συνθηματικό δεν ανοίγει το Vault.",
     noVault: "Δεν υπάρχει ακόμα Vault του orOS στο {cloud}. Να ξεκινήσει ένα με αυτό το συνθηματικό; Βάλε το ίδιο συνθηματικό και στο orOS.",
     createBtn: "Νέο Vault",
@@ -215,6 +221,11 @@ function render() {
   if (s.error && s.signedIn && s.unlocked) pill.title = s.error;
   $("btn-pause").textContent = s.paused ? t("resume") : t("pause");
 
+  // SOS-1: a signal in the cloud, or this computer erased after one.
+  var sig = s.signal === "closed" ? t("sigClosed") : s.signal === "reset" ? t("sigReset")
+    : (!s.signedIn && s.settings.sos) ? t("sigErased", { when: new Date(s.settings.sos).toLocaleString(lang === "el" ? "el-GR" : undefined) }) : "";
+  $("sec-signal").hidden = !sig;
+  $("signal-msg").textContent = sig;
   $("sec-login").hidden = s.signedIn;
   if (!davBusy) $("login-msg").textContent = s.login === "waiting" ? t("loginWait") : errText(s.login || "");
   $("sec-unlock").hidden = !s.signedIn || s.unlocked;

@@ -48,6 +48,10 @@ type Status struct {
 	Folders   map[string]FolderInfo `json:"folders"`
 	Mount     MountInfo             `json:"mount"`
 	Update    *UpdateInfo           `json:"update,omitempty"` // a newer release (UPD-1)
+	// Signal: the cloud holds an orOS signal this key cannot confirm
+	// ("closed": an SOS; "reset": a factory reset); nothing runs and
+	// nothing is deleted until it is gone (SOS-1).
+	Signal string `json:"signal,omitempty"`
 }
 
 // FolderInfo is a folder's last known state.
@@ -86,6 +90,7 @@ type Service struct {
 	diskKey  *secret.VaultKey
 	mnt      mountState
 	update   *UpdateInfo
+	signal   string // SOS-1: "", "closed" or "reset" (Status.Signal)
 
 	kick      chan struct{}
 	changed   chan struct{} // settings changed: rebuild the watcher
@@ -200,7 +205,7 @@ func (s *Service) Status() Status {
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
 		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
-		Update:  s.update,
+		Update:  s.update, Signal: s.signal,
 	}
 	st.Settings.Folders = append([]mirror.Pair{}, s.settings.Folders...)
 	for id, f := range s.folders {
@@ -795,12 +800,29 @@ func (s *Service) SyncOnce() (busy bool, err error) {
 		s.mu.Unlock()
 		return false, err
 	}
-	pairs := append([]mirror.Pair{}, s.settings.Folders...)
-	approve := s.approve
-	s.approve = map[string]bool{}
+	st, vk := s.store(), s.vkey
 	s.syncing = true
 	s.mu.Unlock()
 	s.notify()
+
+	// SOS-1: orOS's sync blob first. A signal this key confirms erases
+	// Drive here; one it cannot confirm stops the pass, deletes nothing.
+	switch s.readSignal(st, vk) {
+	case signalErase:
+		return false, s.eraseForSOS()
+	case signalStop:
+		s.mu.Lock()
+		s.syncing = false
+		s.mu.Unlock()
+		s.notify()
+		return false, ErrSignal
+	}
+
+	s.mu.Lock()
+	pairs := append([]mirror.Pair{}, s.settings.Folders...)
+	approve := s.approve
+	s.approve = map[string]bool{}
+	s.mu.Unlock()
 
 	res, err := e.Sync(pairs, approve)
 
