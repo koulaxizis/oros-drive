@@ -35,7 +35,7 @@ func (s *Service) syncMount() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	want := s.settings.Mount
-	if s.vkey == nil || s.store() == nil {
+	if s.vkey == nil || s.store() == nil || s.signal != "" { // SOS-1: no disk while the cloud holds a signal
 		want = ""
 	}
 	if s.mnt.srv != nil && s.mnt.path == want && s.diskKey == s.vkey {
@@ -88,6 +88,22 @@ func (s *Service) forgetMountLocked(old, now string) error {
 		return nil // syncMount unmounts it first, then unregisters
 	}
 	return cloudfiles.Unregister(old, cfState(old))
+}
+
+// eraseMountLocked (SOS-1): the Explorer folder lets go and its
+// downloaded files go with the placeholders (cloudfiles.Erase), before
+// the cache with the folder's state is removed.
+func (s *Service) eraseMountLocked(dir string) {
+	if s.mnt.srv != nil {
+		s.mnt.srv.Unmount()
+		s.mnt.srv = nil
+	}
+	if dir != "" {
+		if err := cloudfiles.Erase(dir, cfState(dir)); err != nil {
+			s.mnt.err = err.Error()
+		}
+	}
+	s.mnt.path = ""
 }
 
 func (s *Service) unmount() {

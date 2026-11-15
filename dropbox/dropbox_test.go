@@ -441,3 +441,17 @@ func TestCodeHandler(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestGetSyncBlob(t *testing.T) {
+	f, c, done := newFake()
+	defer done()
+	if b, err := c.GetSyncBlob(); b != nil || err != nil {
+		t.Fatalf("no blob: %v %v", b, err)
+	}
+	f.mu.Lock()
+	f.files["/oros-data.json"] = fakeFile{data: []byte(`{"ver":"oros-signal"}`), rev: "r1"}
+	f.mu.Unlock()
+	if b, err := c.GetSyncBlob(); err != nil || string(b) != `{"ver":"oros-signal"}` {
+		t.Fatalf("blob next to /vault: %q %v", b, err)
+	}
+}

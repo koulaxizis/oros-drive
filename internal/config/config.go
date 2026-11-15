@@ -40,6 +40,9 @@ type Settings struct {
 	// NoTray: no icon in the system tray; starting the app again opens
 	// the settings page (fewer icons next to orOS's own).
 	NoTray bool `json:"noTray,omitempty"`
+	// SOS: when this computer's orOS Drive erased itself after an SOS in
+	// orOS (unix ms; SOS-1), so the page can say why it is signed out.
+	SOS int64 `json:"sos,omitempty"`
 }
 
 func settingsFile() (string, error) {

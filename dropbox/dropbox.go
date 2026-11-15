@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -290,9 +291,20 @@ func commit(path string, mode vault.PutMode) map[string]any {
 	return m
 }
 
+// GetSyncBlob reads orOS's sync blob next to Root (vault.BlobReader,
+// SOS-1 signals). A missing blob is (nil, nil).
+func (c *Client) GetSyncBlob() ([]byte, error) {
+	b, _, err := c.download(path.Join(path.Dir(c.Root), vault.SyncBlobName))
+	return b, err
+}
+
 // Get downloads a key. A missing key is (nil, "", nil).
 func (c *Client) Get(key string) ([]byte, string, error) {
-	res, err := c.content("files/download", map[string]string{"path": c.path(key)}, nil)
+	return c.download(c.path(key))
+}
+
+func (c *Client) download(p string) ([]byte, string, error) {
+	res, err := c.content("files/download", map[string]string{"path": p}, nil)
 	if err != nil {
 		return nil, "", err
 	}

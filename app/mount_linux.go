@@ -19,7 +19,7 @@ func (s *Service) syncMount() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	want := s.settings.Mount
-	if s.vkey == nil || s.store() == nil {
+	if s.vkey == nil || s.store() == nil || s.signal != "" { // SOS-1: no disk while the cloud holds a signal
 		want = ""
 	}
 	if s.mnt.srv != nil && s.mnt.path == want && s.diskKey == s.vkey {
@@ -63,6 +63,15 @@ func (s *Service) syncMount() {
 func (s *Service) unmount() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.unmountLocked()
+}
+
+// eraseMountLocked (SOS-1): a FUSE folder keeps nothing of its own (the
+// copies are in the cache, which the caller removes), so it is only
+// let go.
+func (s *Service) eraseMountLocked(dir string) { s.unmountLocked() }
+
+func (s *Service) unmountLocked() {
 	if s.mnt.srv != nil {
 		if s.mnt.srv.Unmount() != nil {
 			// A program still has a file open: detach the folder now

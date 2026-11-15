@@ -312,3 +312,15 @@ func TestHrefs(t *testing.T) {
 		t.Error("etag")
 	}
 }
+
+func TestGetSyncBlob(t *testing.T) {
+	s := server(t)
+	c := client(t, s)
+	if b, err := c.GetSyncBlob(); b != nil || err != nil {
+		t.Fatalf("no blob: %v %v", b, err)
+	}
+	s.Write(ncFiles+"/orOS/orOS-data.json", []byte(`{"ver":"oros-signal"}`))
+	if b, err := c.GetSyncBlob(); err != nil || string(b) != `{"ver":"oros-signal"}` {
+		t.Fatalf("blob next to vault/: %q %v", b, err)
+	}
+}
