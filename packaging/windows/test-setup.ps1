@@ -53,12 +53,13 @@ Install @("/MANAGEDBY=`"$oros`"")
 if ($null -ne (Get-ItemProperty $run).'orOS Drive') { Fail 'a managed install wrote the Run value' }
 $appJson = Get-Content "$cfg\app.json" -Raw | ConvertFrom-Json
 if ($appJson.managedBy -ne $oros) { Fail "managedBy: $($appJson.managedBy)" }
+# The first run above was stopped by the uninstaller and left its
+# instance.json behind; read only the one this run writes.
+Remove-Item "$cfg\instance.json" -ErrorAction SilentlyContinue
 Start-Process (Join-Path $app 'orosdrive.exe') -ArgumentList 'run', '--background' -WindowStyle Hidden
 for ($i = 0; $i -lt 50 -and -not (Test-Path "$cfg\instance.json"); $i++) { Start-Sleep -Milliseconds 200 }
 $inst = Get-Content "$cfg\instance.json" -Raw | ConvertFrom-Json
-$sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$sess.Cookies.Add((New-Object System.Net.Cookie('orosdrive', $inst.token, '/', '127.0.0.1')))
-$sum = Invoke-RestMethod "http://127.0.0.1:$($inst.port)/api/summary" -WebSession $sess
+$sum = Invoke-RestMethod "http://127.0.0.1:$($inst.port)/api/summary" -Headers @{ Cookie = "orosdrive=$($inst.token)" }
 if (-not $sum.managed -or $sum.v -ne 1) { Fail "summary: $($sum | ConvertTo-Json -Compress)" }
 # A second start at the same moment must not run a second app.
 Start-Process (Join-Path $app 'orosdrive.exe') -ArgumentList 'run', '--background' -WindowStyle Hidden -Wait

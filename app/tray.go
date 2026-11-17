@@ -131,28 +131,6 @@ func (t *Tray) refresh() {
 	}
 }
 
-// StateOf is the one-word state the tray icon (and orOS's own tray, through
-// /api/summary) shows: "warn" (not set up), "paused", "sync", "bad"
-// (needs attention) or "ok".
-func StateOf(st Status) string {
-	switch {
-	case !st.SignedIn || !st.Unlocked:
-		return "warn"
-	case st.Paused:
-		return "paused"
-	case st.Syncing:
-		return "sync"
-	case st.Error != "" || st.Signal != "":
-		return "bad"
-	}
-	for _, f := range st.Folders {
-		if f.State != "ok" && f.State != "paused" {
-			return "bad"
-		}
-	}
-	return "ok"
-}
-
 // trayIcon is the orOS mark in reverse colours (gold tile, dark mark),
 // so it is not mistaken for the orOS app's own tray icon next to it,
 // with a small dot for the state.
