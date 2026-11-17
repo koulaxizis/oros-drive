@@ -56,6 +56,9 @@ Usage:
   orosdrive mount [<folder> | off]
                                  show the whole orOS disk as <folder> while the app
                                  runs (Linux, Windows; default ~/orOS)
+  orosdrive manage --by <orOS program> | off
+                                 let installed orOS start this app and show it in
+                                 its own tray icon (its setup does this), or stop
   orosdrive version
 
 The orOS sync passphrase is asked for when needed (or read from
@@ -96,6 +99,8 @@ func main() {
 		err = cmdLs(args)
 	case "pull":
 		err = cmdPull(args)
+	case "manage":
+		err = cmdManage(args)
 	case "mount":
 		err = cmdMount(args)
 	case "usage":

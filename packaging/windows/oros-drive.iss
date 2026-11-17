@@ -6,6 +6,12 @@
 ; rights. One setup for x64 and ARM64 PCs: it installs the matching
 ; build. The settings stay where the portable zip keeps them
 ; (%APPDATA%\orOS Drive), so moving between the two keeps them.
+;
+; /MANAGEDBY="<path to orOS.exe>" (the orOS setup passes it, bundle
+; plan): orOS starts this app with Windows and shows it in its own tray
+; icon, so no "orOS Drive" Run value is written and the app is told
+; `orosdrive manage --by <path>` (it hides its icon at once). orOS
+; Drive stays its own program with its own uninstaller.
 
 #ifndef AppVer
   #define AppVer "0.0.0"
@@ -55,7 +61,7 @@ en.DeleteData=Also delete the orOS Drive settings and sign-in on this computer?%
 el.DeleteData=Να σβηστούν και οι ρυθμίσεις και η σύνδεση του orOS Drive σε αυτόν τον υπολογιστή;%n%nΕπιλέξτε Όχι για να μείνουν για μελλοντική εγκατάσταση. Οι φάκελοί σας, τα αρχεία τους και το orOS Vault στο Dropbox δεν αλλάζουν σε καμία περίπτωση.
 
 [Tasks]
-Name: "autostart"; Description: "{cm:Autostart}"
+Name: "autostart"; Description: "{cm:Autostart}"; Check: not Managed
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -73,12 +79,19 @@ Name: "{userdesktop}\orOS Drive"; Filename: "{app}\orOS Drive.exe"; WorkingDir: 
 ; The same value the app's own "Start with Windows" setting writes
 ; (app/autostart_windows.go), so the settings page shows it and can
 ; turn it off.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "orOS Drive"; ValueData: """{app}\orOS Drive.exe"" run --background"; Tasks: autostart; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "orOS Drive"; ValueData: """{app}\orOS Drive.exe"" run --background"; Tasks: autostart; Flags: uninsdeletevalue; Check: not Managed
 
 [Run]
+Filename: "{app}\orosdrive.exe"; Parameters: "manage --by ""{param:MANAGEDBY}"""; Flags: runhidden waituntilterminated; Check: Managed
 Filename: "{app}\orOS Drive.exe"; Description: "{cm:LaunchProgram,orOS Drive}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// Installed by the orOS setup, which starts and shows this app.
+function Managed(): Boolean;
+begin
+  Result := ExpandConstant('{param:MANAGEDBY|}') <> '';
+end;
+
 // The app has no window to close (it lives in the tray), so it is
 // stopped outright. The engine is built for that: nothing is deleted
 // or committed from a half-done pass.

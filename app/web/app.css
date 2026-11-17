@@ -38,6 +38,7 @@ input, select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1p
 .note.bad { color: var(--bad); }
 label { display: grid; gap: 4px; margin: 8px 0; }
 label.check { display: flex; align-items: center; gap: 8px; }
+[hidden] { display: none !important; }
 label.check input { width: auto; }
 .add, .prefs { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 8px; }
 .prefs { border-top: 0; margin-top: 0; padding-top: 0; margin-bottom: 12px; }

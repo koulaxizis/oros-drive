@@ -57,6 +57,7 @@ var T = {
     maxDeletes: "Ask before deleting more than (files)", lang: "Language", autostart: "Start at login", save: "Save", saved: "Saved.",
     updateCheck: "Tell me about new versions (asks GitHub once a day)",
     tray: "Show the icon in the tray",
+    managedNote: "orOS starts orOS Drive with the computer and shows it in the orOS icon in the tray (orOS Drive menu), so there is one icon. To change that, uninstall orOS and keep orOS Drive.",
     trayNote: "Without the icon, orOS Drive keeps syncing; open orOS Drive again from the Start menu (or the applications menu) to reach these settings. Turned back on, the icon comes back at the next start.",
     updateText: "orOS Drive {v} is available. Install it over this one: your folders and settings stay.", updateBtn: "Download page",
     openOros: "Open orOS", openTrash: "Open the trash", lock: "Forget the vault key", logout: "Sign out", quit: "Quit orOS Drive",
@@ -133,6 +134,7 @@ var T = {
     maxDeletes: "Ερώτηση πριν σβηστούν πάνω από (αρχεία)", lang: "Γλώσσα", autostart: "Εκκίνηση με τη σύνδεση", save: "Αποθήκευση", saved: "Αποθηκεύτηκε.",
     updateCheck: "Ειδοποίηση για νέες εκδόσεις (ρωτά το GitHub μία φορά τη μέρα)",
     tray: "Εικονίδιο στο tray",
+    managedNote: "Το orOS ξεκινά το orOS Drive με τον υπολογιστή και το δείχνει στο εικονίδιο του orOS στο tray (μενού orOS Drive), ώστε να υπάρχει ένα εικονίδιο. Για να αλλάξει αυτό, απεγκατέστησε το orOS και κράτησε το orOS Drive.",
     trayNote: "Χωρίς το εικονίδιο το orOS Drive συνεχίζει τον συγχρονισμό· άνοιξε ξανά το orOS Drive από το μενού Έναρξη (ή το μενού εφαρμογών) για αυτές τις ρυθμίσεις. Αν το ξανανάψεις, το εικονίδιο επιστρέφει στην επόμενη εκκίνηση.",
     updateText: "Υπάρχει νέα έκδοση, το orOS Drive {v}. Εγκατέστησέ τη πάνω από αυτή: οι φάκελοι και οι ρυθμίσεις μένουν.", updateBtn: "Σελίδα λήψης",
     openOros: "Άνοιγμα orOS", openTrash: "Άνοιγμα κάδου", lock: "Ξέχνα το κλειδί του Vault", logout: "Αποσύνδεση", quit: "Έξοδος από το orOS Drive",
@@ -249,6 +251,9 @@ function render() {
     $("p-tray").checked = !s.settings.noTray;
   }
   $("p-device").disabled = (s.settings.folders || []).length > 0;
+  ["p-autostart", "p-tray"].forEach(function (id) { $(id).parentNode.hidden = !!s.managed; });
+  $("tray-note").hidden = !!s.managed;
+  $("managed-note").hidden = !s.managed;
   renderDisk();
   renderUpdate();
   $("about").textContent = t("about", { v: s.version, w: s.secretsIn === "keychain" ? t("whereKeychain") : t("whereFile") });

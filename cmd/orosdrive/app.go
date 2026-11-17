@@ -19,6 +19,7 @@ import (
 
 	"github.com/koulaxizis/oros-drive/app"
 	"github.com/koulaxizis/oros-drive/internal/config"
+	"github.com/koulaxizis/oros-drive/internal/onelock"
 	"github.com/koulaxizis/oros-drive/mirror"
 )
 
@@ -34,7 +35,7 @@ func hasDesktop() bool {
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	noTray := fs.Bool("no-tray", false, "no tray icon (servers); the settings page still works")
-	background := fs.Bool("background", false, "do not open the settings page (start at login)")
+	background := fs.Bool("background", false, "do not open the settings page (start at login, or started by orOS)")
 	fs.Parse(args)
 
 	if link := app.Running(); link != "" {
@@ -43,10 +44,34 @@ func cmdRun(args []string) error {
 		}
 		return nil
 	}
+	// One app per user, even when the login start, orOS's tray and a
+	// double click start it at the same moment.
+	dir, err := config.Dir()
+	if err != nil {
+		return err
+	}
+	lock, err := onelock.Take("orOS Drive", dir)
+	if errors.Is(err, onelock.ErrHeld) {
+		for i := 0; i < 50 && !*background; i++ {
+			if link := app.Running(); link != "" {
+				return openURL(link)
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	s, err := app.NewService(version)
 	if err != nil {
 		return err
 	}
+	if s.LetGoIfOrphaned() {
+		fmt.Fprintln(os.Stderr, "orOS, which showed orOS Drive in its tray icon, is gone: orOS Drive shows its own icon again.")
+	}
+	s.DropOwnAutostart()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	defer s.Shutdown() // unmount the orOS disk folder
@@ -81,6 +106,13 @@ func cmdRun(args []string) error {
 	return nil
 }
 
+// trayHidden: the settings hide the icon, or orOS shows this app in its
+// own tray icon (app/manage.go).
+func trayHidden(s *app.Service) bool {
+	st := s.Status()
+	return st.Settings.NoTray || st.Managed
+}
+
 // runWithTray shows the tray icon unless the settings hide it, and
 // blocks until the app should end. Hiding it (settings page) takes the
 // icon away at once and the app goes on; showing it again works at
@@ -105,7 +137,7 @@ func runWithTray(s *app.Service, ui *app.UI, sig <-chan os.Signal, setQuit func(
 	setQuit(stop)
 	wake := make(chan struct{}, 1)
 	s.OnChange(func() {
-		if s.Status().Settings.NoTray {
+		if trayHidden(s) {
 			mu.Lock()
 			t := current
 			if t != nil {
@@ -129,7 +161,7 @@ func runWithTray(s *app.Service, ui *app.UI, sig <-chan os.Signal, setQuit func(
 			return
 		default:
 		}
-		if !shown && !s.Status().Settings.NoTray {
+		if !shown && !trayHidden(s) {
 			shown = true
 			t := &app.Tray{S: s, UI: ui}
 			mu.Lock()
@@ -403,6 +435,45 @@ func cmdMount(args []string) error {
 		fmt.Printf("The orOS disk will be shown at %s when orOS Drive runs (orosdrive run).\n", target)
 	default:
 		fmt.Printf("The orOS disk is shown at %s (files download when opened).\n", target)
+	}
+	return nil
+}
+
+func cmdManage(args []string) error {
+	by := ""
+	switch {
+	case len(args) == 2 && args[0] == "--by":
+		by = args[1]
+	case len(args) == 1 && strings.HasPrefix(args[0], "--by="):
+		by = strings.TrimPrefix(args[0], "--by=")
+	case len(args) == 1 && args[0] == "off":
+	default:
+		return errors.New("usage: orosdrive manage --by <orOS program> | off")
+	}
+	if by != "" {
+		abs, err := filepath.Abs(by)
+		if err != nil {
+			return err
+		}
+		by = abs
+	}
+	if _, running, err := call("manage", map[string]string{"by": by}); running {
+		if err != nil {
+			return err
+		}
+	} else {
+		s, err := app.NewService(version)
+		if err != nil {
+			return err
+		}
+		if err := s.SetManaged(by); err != nil {
+			return err
+		}
+	}
+	if by == "" {
+		fmt.Println("orOS Drive starts and shows itself again (its own tray icon).")
+	} else {
+		fmt.Printf("orOS (%s) now starts orOS Drive and shows it in its tray icon.\n", by)
 	}
 	return nil
 }
