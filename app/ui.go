@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io/fs"
 	"net"
 	"net/http"
@@ -106,6 +107,9 @@ func StartUI(s *Service, quit func()) (*UI, error) {
 	if ln == nil {
 		return nil, fmt.Errorf("no free port for the settings page: %w", err)
 	}
+	s.mu.Lock()
+	s.uiPort = u.Port
+	s.mu.Unlock()
 	u.srv = &http.Server{Handler: u.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go u.srv.Serve(ln)
 	if p, err := instanceFile(); err == nil {
@@ -188,7 +192,31 @@ func (u *UI) Handler() http.Handler {
 			json.NewEncoder(w).Encode(out)
 		})
 	}
+	// The Dropbox answer orOS passes on (handoff.go): no cookie (the
+	// browser comes from Dropbox), the sign-in's own state instead.
+	mux.HandleFunc("/oauth/done", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		err := u.S.takeHandoff(q.Get("state"), q.Get("code"), q.Get("error"))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		msg := "orOS Drive is signed in to Dropbox. You can close this tab.<br>Το orOS Drive συνδέθηκε στο Dropbox. Μπορείς να κλείσεις την καρτέλα."
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			msg = "orOS Drive: " + html.EscapeString(err.Error())
+		}
+		fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>orOS Drive</title><p style=\"font:16px system-ui;margin:3em\">%s</p>", msg)
+	})
 	api("/api/ping", "GET", func(r *http.Request) (any, error) { return nil, nil })
+	api("/api/summary", "GET", func(r *http.Request) (any, error) { return SummaryOf(u.S.Status()), nil })
+	api("/api/manage", "POST", func(r *http.Request) (any, error) {
+		var in struct {
+			By string `json:"by"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			return nil, err
+		}
+		return nil, u.S.SetManaged(in.By)
+	})
 	api("/api/status", "GET", func(r *http.Request) (any, error) {
 		st := u.S.Status()
 		return struct {

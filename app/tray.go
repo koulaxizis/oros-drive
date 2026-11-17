@@ -100,22 +100,17 @@ func (t *Tray) refresh() {
 		return
 	}
 	st := t.S.Status()
-	text, kind := t.word("Up to date", "Ενημερωμένο"), "ok"
-	switch {
-	case !st.SignedIn || !st.Unlocked:
-		text, kind = t.word("Open the settings to set up", "Άνοιξε τις ρυθμίσεις για να ξεκινήσεις"), "warn"
-	case st.Paused:
-		text, kind = t.word("Paused", "Σε παύση"), "paused"
-	case st.Syncing:
-		text, kind = t.word("Syncing…", "Συγχρονίζει…"), "sync"
-	case st.Error != "":
-		text, kind = t.word("Needs attention", "Θέλει προσοχή"), "bad"
-	default:
-		for _, f := range st.Folders {
-			if f.State != "ok" && f.State != "paused" {
-				text, kind = t.word("Needs attention", "Θέλει προσοχή"), "bad"
-			}
-		}
+	kind := StateOf(st)
+	text := t.word("Up to date", "Ενημερωμένο")
+	switch kind {
+	case "warn":
+		text = t.word("Open the settings to set up", "Άνοιξε τις ρυθμίσεις για να ξεκινήσεις")
+	case "paused":
+		text = t.word("Paused", "Σε παύση")
+	case "sync":
+		text = t.word("Syncing…", "Συγχρονίζει…")
+	case "bad":
+		text = t.word("Needs attention", "Θέλει προσοχή")
 	}
 	t.status.SetTitle(text)
 	systray.SetTooltip("orOS Drive: " + text)
@@ -134,6 +129,28 @@ func (t *Tray) refresh() {
 		t.icon = kind
 		systray.SetIcon(trayIcon(kind))
 	}
+}
+
+// StateOf is the one-word state the tray icon (and orOS's own tray, through
+// /api/summary) shows: "warn" (not set up), "paused", "sync", "bad"
+// (needs attention) or "ok".
+func StateOf(st Status) string {
+	switch {
+	case !st.SignedIn || !st.Unlocked:
+		return "warn"
+	case st.Paused:
+		return "paused"
+	case st.Syncing:
+		return "sync"
+	case st.Error != "" || st.Signal != "":
+		return "bad"
+	}
+	for _, f := range st.Folders {
+		if f.State != "ok" && f.State != "paused" {
+			return "bad"
+		}
+	}
+	return "ok"
 }
 
 // trayIcon is the orOS mark in reverse colours (gold tile, dark mark),

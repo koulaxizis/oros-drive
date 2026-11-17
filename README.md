@@ -14,6 +14,8 @@ On Windows run `orOS-Drive-Setup-<version>.exe` (no administrator rights needed;
 
 The app then lives in the tray, as the orOS mark in reverse colours (a gold tile, so it is not mistaken for the orOS app's dark one) with a dot for the state (on GNOME the tray needs the AppIndicator extension; without it the settings page is the way in), starts at login if you tick it (Settings › "Show the icon in the tray" hides the icon; orOS Drive keeps syncing, and starting it again from the Start menu or the applications menu opens the settings), and syncs when a mirrored folder changes, when the Vault changes (checked every 30 seconds) and every 10 minutes.
 
+**With installed orOS** (its setup installs orOS Drive too, ticked by default; on Linux the orOS .deb and AppImage carry it): orOS starts orOS Drive with the computer and shows it in the one orOS icon in the tray (an "orOS Drive" menu with the state, Sync now, Pause and Settings), so orOS Drive shows no icon and has no login start of its own. It stays its own program: its folder, settings, sign-in, Explorer folder and uninstaller are the same as above, and the Dropbox sign-in works while orOS holds the sign-in port (orOS passes the answer on). Uninstalling orOS can keep orOS Drive; it then shows its own icon and starts at login again. `orosdrive manage --by <orOS program>` / `orosdrive manage off` is how orOS's setup hands it over and takes it back; only one orOS Drive app runs per user either way.
+
 ### What happens to your files
 
 - Changes go both ways: new files, edits, renames (as delete + add) and deletions.
@@ -33,6 +35,7 @@ Settings › "The orOS disk as a folder" (or `orosdrive mount`) shows the whole 
 
 ```
 orosdrive [run] [--no-tray] [--background]   the app (no tray: servers)
+orosdrive manage --by <orOS program> | off   orOS shows this app in its tray icon, or stops
 orosdrive open                    open the settings page of the running app
 orosdrive login [--paste]         sign in to the Dropbox orOS syncs with
 orosdrive login --nextcloud <server> [--dir /orOS]

@@ -40,6 +40,15 @@ type Settings struct {
 	// NoTray: no icon in the system tray; starting the app again opens
 	// the settings page (fewer icons next to orOS's own).
 	NoTray bool `json:"noTray,omitempty"`
+	// ManagedBy: the orOS program (installed orOS, orOS.exe or the
+	// AppImage/deb launcher) that starts this app at login and shows it
+	// in its own tray icon, so the computer has one orOS icon. "" = this
+	// app starts and shows itself. A ManagedBy file that is gone (orOS
+	// uninstalled) counts as "" and is cleared at the next start.
+	ManagedBy string `json:"managedBy,omitempty"`
+	// OwnAutostart: this app started at login by itself before orOS
+	// took it over, so it does again when orOS lets go.
+	OwnAutostart bool `json:"ownAutostart,omitempty"`
 	// SOS: when this computer's orOS Drive erased itself after an SOS in
 	// orOS (unix ms; SOS-1), so the page can say why it is signed out.
 	SOS int64 `json:"sos,omitempty"`

@@ -52,6 +52,8 @@ type Status struct {
 	// ("closed": an SOS; "reset": a factory reset); nothing runs and
 	// nothing is deleted until it is gone (SOS-1).
 	Signal string `json:"signal,omitempty"`
+	// Managed: orOS starts this app and shows it in its tray icon.
+	Managed bool `json:"managed"`
 }
 
 // FolderInfo is a folder's last known state.
@@ -82,6 +84,8 @@ type Service struct {
 	needsKey string
 	syncing  bool
 	login    string
+	uiPort   int      // the settings page's port, for a sign-in orOS hands over
+	handoff  *handoff // a Dropbox sign-in whose answer orOS passes on
 	events   []mirror.Event
 	approve  map[string]bool
 	folders  map[string]mirror.FolderStatus
@@ -205,7 +209,7 @@ func (s *Service) Status() Status {
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
 		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
-		Update:  s.update, Signal: s.signal,
+		Update:  s.update, Signal: s.signal, Managed: managedActive(s.settings.ManagedBy),
 	}
 	st.Settings.Folders = append([]mirror.Pair{}, s.settings.Folders...)
 	for id, f := range s.folders {
@@ -227,16 +231,48 @@ func (s *Service) addEvent(ev mirror.Event) {
 
 // StartLogin begins the Dropbox sign-in and returns the page to open.
 // The answer comes back to localhost:47800 (the address orOS's Dropbox
-// app allows); Status().Login tells how it went.
+// app allows). When orOS itself holds that port (installed orOS,
+// Portable), it passes the answer on to this app's settings page
+// (/oauth/done); the state names that page's port so orOS knows where.
+// Status().Login tells how it went.
 func (s *Service) StartLogin() (string, error) {
 	c := dropbox.New(dropbox.Tokens{})
 	p := dropbox.NewPKCE()
-	u := c.AuthorizeURL(p, dropbox.LoopbackRedirect)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	ready := make(chan error, 1)
+	direct := make(chan codeResult, 1)
+	go func() {
+		code, err := dropbox.WaitForCodeReady(ctx, p, ready)
+		direct <- codeResult{code, err}
+	}()
+	wait := func() (string, error) { r := <-direct; return r.code, r.err }
+	if err := <-ready; err != nil {
+		<-direct
+		s.mu.Lock()
+		port := s.uiPort
+		s.mu.Unlock()
+		if port == 0 || !orosTakesSignIn() {
+			cancel()
+			return "", err
+		}
+		p.State = HandoffState(port, p.State)
+		h := &handoff{state: p.State, done: make(chan codeResult, 1)}
+		s.mu.Lock()
+		s.handoff = h
+		s.mu.Unlock()
+		wait = func() (string, error) {
+			select {
+			case r := <-h.done:
+				return r.code, r.err
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
+	u := c.AuthorizeURL(p, dropbox.LoopbackRedirect)
 	go func() {
 		defer cancel()
-		code, err := dropbox.WaitForCodeReady(ctx, p, ready)
+		code, err := wait()
 		if err == nil {
 			var t dropbox.Tokens
 			if t, err = c.Exchange(code, p, dropbox.LoopbackRedirect); err == nil {
@@ -244,6 +280,9 @@ func (s *Service) StartLogin() (string, error) {
 			}
 		}
 		s.mu.Lock()
+		if s.handoff != nil && s.handoff.state == p.State {
+			s.handoff = nil
+		}
 		if err != nil {
 			s.login = err.Error()
 		} else {
@@ -253,9 +292,6 @@ func (s *Service) StartLogin() (string, error) {
 		s.notify()
 		s.Kick()
 	}()
-	if err := <-ready; err != nil {
-		return "", err
-	}
 	s.mu.Lock()
 	s.login = "waiting"
 	s.mu.Unlock()
@@ -713,6 +749,9 @@ func (s *Service) SetPrefs(p Prefs) error {
 		} else {
 			s.update = nil
 		}
+	}
+	if managedActive(s.settings.ManagedBy) {
+		p.Autostart, p.Tray = nil, nil // orOS starts and shows this app
 	}
 	if p.Autostart != nil {
 		if err := SetAutostart(*p.Autostart); err != nil {
