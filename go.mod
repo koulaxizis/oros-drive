@@ -2,7 +2,7 @@ module github.com/koulaxizis/oros-drive
 
 go 1.24.0
 
-toolchain go1.24.7
+toolchain go1.26.11
 
 require (
 	fyne.io/systray v1.11.0
