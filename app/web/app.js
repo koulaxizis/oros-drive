@@ -54,6 +54,7 @@ var T = {
     activity: "Activity",
     ev: { upload: "Uploaded", download: "Downloaded", "delete-local": "Moved to trash", "delete-remote": "Deleted in orOS", "conflict-copy": "Conflict copy", error: "Error" },
     settings: "Settings", device: "This computer's name in orOS", maxFile: "Largest file to upload (MB)",
+    maxFileHint: "Files bigger than this stay only on this computer; the list of folders names them. 4096 MB (4 GB) is the most orOS can take: a file is encrypted whole, in memory.",
     maxDeletes: "Ask before deleting more than (files)", lang: "Language", autostart: "Start at login", save: "Save", saved: "Saved.",
     updateCheck: "Tell me about new versions (asks GitHub once a day)",
     tray: "Show the icon in the tray",
@@ -131,6 +132,7 @@ var T = {
     activity: "Δραστηριότητα",
     ev: { upload: "Ανέβηκε", download: "Κατέβηκε", "delete-local": "Στον κάδο", "delete-remote": "Σβήστηκε στο orOS", "conflict-copy": "Αντίγραφο σύγκρουσης", error: "Σφάλμα" },
     settings: "Ρυθμίσεις", device: "Όνομα αυτού του υπολογιστή στο orOS", maxFile: "Μεγαλύτερο αρχείο για ανέβασμα (MB)",
+    maxFileHint: "Τα αρχεία πάνω από αυτό το μέγεθος μένουν μόνο σε αυτόν τον υπολογιστή· η λίστα των φακέλων τα αναφέρει. Τα 4096 MB (4 GB) είναι το μέγιστο που δέχεται το orOS: κάθε αρχείο κρυπτογραφείται ολόκληρο στη μνήμη.",
     maxDeletes: "Ερώτηση πριν σβηστούν πάνω από (αρχεία)", lang: "Γλώσσα", autostart: "Εκκίνηση με τη σύνδεση", save: "Αποθήκευση", saved: "Αποθηκεύτηκε.",
     updateCheck: "Ειδοποίηση για νέες εκδόσεις (ρωτά το GitHub μία φορά τη μέρα)",
     tray: "Εικονίδιο στο tray",
@@ -243,7 +245,7 @@ function render() {
   renderEvents();
   if (!editingPrefs) {
     $("p-device").value = s.settings.device || "";
-    $("p-maxfile").value = s.settings.maxFileMB || 500;
+    $("p-maxfile").value = s.settings.maxFileMB || s.maxFileDefault || 4096;
     $("p-maxdel").value = s.settings.maxDeletes || 50;
     $("p-lang").value = s.settings.lang || "";
     $("p-autostart").checked = !!s.autostart;

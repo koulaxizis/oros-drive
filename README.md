@@ -24,7 +24,7 @@ The app then lives in the tray, as the orOS mark in reverse colours (a gold tile
 - **Many deletions at once** (more than 50, adjustable) wait for your yes in the settings page.
 - **A missing folder** (an unplugged disk) pauses that folder; it is never read as "everything was deleted". An empty Vault after a reset stops the mirror instead of rebuilding it.
 - **Files deleted here because they were deleted in orOS** go to the orOS Drive trash (Settings › Open the trash) for 30 days.
-- Files bigger than 500 MB (adjustable) stay on this computer and are listed. Lock and temp files (`~$*.docx`, `*.part`, `*.tmp`, `Thumbs.db`, `.DS_Store`) are never mirrored. Names Windows cannot hold (`a:b.txt`) stay in orOS and are listed.
+- Files bigger than 4 GB (500 MB on Android; adjustable) stay on this computer and are listed. Lock and temp files (`~$*.docx`, `*.part`, `*.tmp`, `Thumbs.db`, `.DS_Store`) are never mirrored. Names Windows cannot hold (`a:b.txt`) stay in orOS and are listed.
 - A file that changed in the last 3 seconds waits for the next pass, and a local change made while syncing always wins.
 
 ### The orOS disk as a folder (Linux)

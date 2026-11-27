@@ -54,6 +54,8 @@ type Status struct {
 	Signal string `json:"signal,omitempty"`
 	// Managed: orOS starts this app and shows it in its tray icon.
 	Managed bool `json:"managed"`
+	// MaxFileDefault: the size limit (MB) when settings.maxFileMB is 0.
+	MaxFileDefault int `json:"maxFileDefault"`
 }
 
 // FolderInfo is a folder's last known state.
@@ -210,6 +212,7 @@ func (s *Service) Status() Status {
 		Folders: map[string]FolderInfo{},
 		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
 		Update:  s.update, Signal: s.signal, Managed: managedActive(s.settings.ManagedBy),
+		MaxFileDefault: DefaultMaxFileMB(),
 	}
 	st.Settings.Folders = append([]mirror.Pair{}, s.settings.Folders...)
 	for id, f := range s.folders {
@@ -706,7 +709,7 @@ func (s *Service) SetPrefs(p Prefs) error {
 		}
 	}
 	if p.MaxFileMB != nil {
-		if *p.MaxFileMB < 1 || *p.MaxFileMB > 4096 {
+		if *p.MaxFileMB < 1 || *p.MaxFileMB > MaxFileMBLimit {
 			return errors.New("size limit: 1 to 4096 MB")
 		}
 		s.settings.MaxFileMB = *p.MaxFileMB
@@ -806,7 +809,7 @@ func (s *Service) engineLocked() (*mirror.Engine, error) {
 		StateDir: stateDir,
 		Trash:    &mirror.DirTrash{Root: trashDir},
 		Opt: mirror.Options{
-			MaxFileSize: int64(s.settings.MaxFileMB) << 20,
+			MaxFileSize: int64(maxFileMB(s.settings.MaxFileMB)) << 20,
 			MaxDeletes:  s.settings.MaxDeletes,
 		},
 		Log:       s.addEvent,

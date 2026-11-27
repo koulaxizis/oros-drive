@@ -55,7 +55,7 @@ func (s *Service) diskLocked() (*vdisk.Disk, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.disk = &vdisk.Disk{Vault: vault.New(st, nil).WithKeys(k), CacheDir: cache, MaxFile: int64(s.settings.MaxFileMB) << 20}
+	s.disk = &vdisk.Disk{Vault: vault.New(st, nil).WithKeys(k), CacheDir: cache, MaxFile: int64(maxFileMB(s.settings.MaxFileMB)) << 20}
 	s.diskKey = s.vkey
 	return s.disk, nil
 }
