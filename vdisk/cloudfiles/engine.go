@@ -20,6 +20,8 @@
 package cloudfiles
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,6 +105,101 @@ type Engine struct {
 	missing map[string]time.Time // synced, gone here, no delete callback yet
 	leaving map[string]time.Time // told orOS of its deletion or move; Windows has not finished it
 	tooBig  map[string]string    // rel → size/mtime that was refused
+
+	// Held deletions (more than MaxDeletes at once): what the person
+	// sees, the set already logged (one "held" event per new set, not
+	// one per pass) and the set they allowed. Kept in memory only: after
+	// a restart the brake holds again and asks again.
+	held     Held
+	logged   map[string]string // kind → sig
+	approved map[string]string // kind → sig
+}
+
+// Held is the deletions a pass did not carry out because there were
+// more than MaxDeletes. Gone: deleted in orOS, would leave this folder
+// (downloaded content goes to the trash). Lost: deleted here, would be
+// deleted in orOS. Each list is sorted; its Sig names exactly that set,
+// so an approval never covers a set that changed since it was shown.
+type Held struct {
+	Gone    []string `json:"gone,omitempty"`
+	GoneSig string   `json:"goneSig,omitempty"`
+	Lost    []string `json:"lost,omitempty"`
+	LostSig string   `json:"lostSig,omitempty"`
+}
+
+// heldSig names a sorted set of paths.
+func heldSig(paths []string) string {
+	h := sha256.New()
+	for _, p := range paths {
+		h.Write([]byte(p))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)[:12])
+}
+
+// Held returns the deletions waiting now.
+func (e *Engine) Held() Held {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	h := e.held
+	h.Gone = append([]string(nil), h.Gone...)
+	h.Lost = append([]string(nil), h.Lost...)
+	return h
+}
+
+// ApproveHeld lets the next pass carry out the held set of kind ("gone"
+// or "lost") named by sig. It reports false when that set is not the
+// one waiting now (it changed, or nothing waits): nothing is approved.
+func (e *Engine) ApproveHeld(kind, sig string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	cur := map[string]string{"gone": e.held.GoneSig, "lost": e.held.LostSig}[kind]
+	if sig == "" || cur != sig {
+		return false
+	}
+	if e.approved == nil {
+		e.approved = map[string]string{}
+	}
+	e.approved[kind] = sig
+	return true
+}
+
+// brake decides about one kind of deletions: carried out (true) when
+// within MaxDeletes or the person approved exactly this set; otherwise
+// held, logged once per new set.
+func (e *Engine) brake(kind, what string, paths []string) bool {
+	sort.Strings(paths)
+	sig := heldSig(paths)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.logged == nil {
+		e.logged = map[string]string{}
+	}
+	if e.approved == nil {
+		e.approved = map[string]string{}
+	}
+	set := func(p []string, sg string) {
+		if kind == "gone" {
+			e.held.Gone, e.held.GoneSig = p, sg
+		} else {
+			e.held.Lost, e.held.LostSig = p, sg
+		}
+	}
+	if len(paths) <= e.maxDeletes() || e.approved[kind] == sig {
+		delete(e.approved, kind)
+		delete(e.logged, kind)
+		set(nil, "")
+		return true
+	}
+	delete(e.approved, kind) // an approval of another set lapses
+	set(paths, sig)
+	if e.logged[kind] != sig {
+		e.logged[kind] = sig
+		if e.Logf != nil {
+			go e.Logf("held", "", fmt.Sprintf(what, len(paths)))
+		}
+	}
+	return false
 }
 
 // Report says what a pass could not do.
@@ -469,15 +566,18 @@ func (e *Engine) Pass() (Report, error) {
 		}
 	}
 
-	// Deletions, with the brakes the mirror has.
-	if len(gone) > e.maxDeletes() {
+	// Deletions, with the brakes the mirror has: more than MaxDeletes
+	// wait until the person allows exactly that set (ApproveHeld).
+	gonePaths := make([]string, len(gone))
+	for i, g := range gone {
+		gonePaths[i] = g.rel
+	}
+	if !e.brake("gone", "%d files deleted in orOS", gonePaths) {
 		rep.Held += len(gone)
-		e.logf("held", "", fmt.Sprintf("%d files deleted in orOS", len(gone)))
 		gone = nil
 	}
-	if len(lost) > e.maxDeletes() {
+	if !e.brake("lost", "%d files missing here", append([]string(nil), lost...)) {
 		rep.Held += len(lost)
-		e.logf("held", "", fmt.Sprintf("%d files missing here", len(lost)))
 		lost = nil
 	}
 	// Files first, then folders from the deepest.

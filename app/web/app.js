@@ -5,7 +5,7 @@
 var T = {
   en: {
     syncNow: "Sync now", pause: "Pause", resume: "Resume",
-    stOk: "Up to date", stSyncing: "Syncing…", stPaused: "Paused", stAttention: "Needs attention", stSetup: "Not set up",
+    stOk: "Up to date", stChecking: "Checking files…", stUploading: "Uploading {d} of {n} ({bd} of {b})", stPaused: "Paused", stAttention: "Needs attention", stSetup: "Not set up",
     loginTitle: "Sign in to Dropbox",
     loginText: "Use the Dropbox account orOS syncs with. orOS Drive puts your folders into the encrypted orOS Vault there; Dropbox cannot read them.",
     loginBtn: "Sign in with Dropbox", loginWait: "Finish the sign-in in the browser tab that opened.",
@@ -41,6 +41,11 @@ var T = {
     diskText: "The whole orOS disk appears as a folder on this computer. Files download when you open them and upload when you save them; a copy of what you opened stays in a cache.",
     diskOn: "Show the orOS disk", diskPath: "Folder (it must be empty)",
     diskMounted: "Shown at {p}.", diskOff: "Off.", diskLocked: "Shown again once the vault is unlocked.",
+    heldGone: "{n} files were deleted in orOS. Here they are only shortcuts to the orOS copy, which is gone. So many at once wait for you: nothing is deleted until you say so.",
+    heldLost: "{n} files are missing from this folder but are still in orOS. So many at once wait for you: nothing is deleted in orOS until you say so.",
+    heldGoneOk: "Delete them here too", heldLostOk: "Delete them in orOS too",
+    heldMore: "…and {n} more.", heldList: "Show the files",
+    heldAsk: "Delete these {n} files? This cannot be undone from this page.",
     spaceTitle: "Space in {cloud}",
     spaceText: "Files are stored encrypted. Deleted and replaced files leave content behind that no file uses; after 30 days it can be removed.",
     spaceShow: "Show space use", spaceWait: "Counting…",
@@ -83,7 +88,7 @@ var T = {
   },
   el: {
     syncNow: "Συγχρονισμός τώρα", pause: "Παύση", resume: "Συνέχεια",
-    stOk: "Ενημερωμένο", stSyncing: "Συγχρονίζει…", stPaused: "Σε παύση", stAttention: "Θέλει προσοχή", stSetup: "Δεν έχει ρυθμιστεί",
+    stOk: "Ενημερωμένο", stChecking: "Ελέγχει τα αρχεία…", stUploading: "Ανεβαίνουν {d} από {n} ({bd} από {b})", stPaused: "Σε παύση", stAttention: "Θέλει προσοχή", stSetup: "Δεν έχει ρυθμιστεί",
     loginTitle: "Σύνδεση στο Dropbox",
     loginText: "Χρησιμοποίησε τον λογαριασμό Dropbox με τον οποίο συγχρονίζει το orOS. Το orOS Drive βάζει τους φακέλους σου στο κρυπτογραφημένο Vault του orOS εκεί· το Dropbox δεν μπορεί να τους διαβάσει.",
     loginBtn: "Σύνδεση με Dropbox", loginWait: "Ολοκλήρωσε τη σύνδεση στην καρτέλα του browser που άνοιξε.",
@@ -119,6 +124,11 @@ var T = {
     diskText: "Όλος ο δίσκος του orOS εμφανίζεται ως φάκελος σε αυτόν τον υπολογιστή. Τα αρχεία κατεβαίνουν όταν τα ανοίγεις και ανεβαίνουν όταν τα αποθηκεύεις· ένα αντίγραφο όσων άνοιξες μένει στην cache.",
     diskOn: "Εμφάνιση του δίσκου του orOS", diskPath: "Φάκελος (πρέπει να είναι άδειος)",
     diskMounted: "Εμφανίζεται στο {p}.", diskOff: "Ανενεργό.", diskLocked: "Θα εμφανιστεί ξανά μόλις ξεκλειδωθεί το vault.",
+    heldGone: "{n} αρχεία σβήστηκαν στο orOS. Εδώ είναι μόνο συντομεύσεις προς το αντίγραφο του orOS, που δεν υπάρχει πια. Τόσα μαζί περιμένουν εσένα: τίποτα δεν σβήνεται αν δεν το πεις.",
+    heldLost: "{n} αρχεία λείπουν από αυτόν τον φάκελο αλλά υπάρχουν ακόμη στο orOS. Τόσα μαζί περιμένουν εσένα: τίποτα δεν σβήνεται στο orOS αν δεν το πεις.",
+    heldGoneOk: "Σβήσ' τα και εδώ", heldLostOk: "Σβήσ' τα και στο orOS",
+    heldMore: "…και άλλα {n}.", heldList: "Δείξε τα αρχεία",
+    heldAsk: "Να σβηστούν αυτά τα {n} αρχεία; Δεν αναιρείται από αυτή τη σελίδα.",
     spaceTitle: "Χώρος στο {cloud}",
     spaceText: "Τα αρχεία αποθηκεύονται κρυπτογραφημένα. Όσα σβήστηκαν ή αντικαταστάθηκαν αφήνουν περιεχόμενο που δεν χρησιμοποιεί κανένα αρχείο· μετά από 30 ημέρες μπορεί να αφαιρεθεί.",
     spaceShow: "Εμφάνιση χώρου", spaceWait: "Μετράει…",
@@ -219,7 +229,7 @@ function render() {
   var pill = $("pill");
   if (!s.signedIn || !s.unlocked) { pill.textContent = t("stSetup"); pill.className = "pill warn"; }
   else if (s.paused) { pill.textContent = t("stPaused"); pill.className = "pill"; }
-  else if (s.syncing) { pill.textContent = t("stSyncing"); pill.className = "pill"; }
+  else if (s.syncing) { pill.textContent = syncText(s.progress); pill.className = "pill"; }
   else if (attention) { pill.textContent = t("stAttention"); pill.className = "pill bad"; }
   else { pill.textContent = t("stOk") + (s.lastSync ? " · " + when(s.lastSync) : ""); pill.className = "pill ok"; }
   if (s.error && s.signedIn && s.unlocked) pill.title = s.error;
@@ -257,6 +267,7 @@ function render() {
   $("tray-note").hidden = !!s.managed;
   $("managed-note").hidden = !s.managed;
   renderDisk();
+  renderHeld();
   renderUpdate();
   $("about").textContent = t("about", { v: s.version, w: s.secretsIn === "keychain" ? t("whereKeychain") : t("whereFile") });
 }
@@ -286,6 +297,45 @@ function renderDisk() {
   else if (m.mounted) msg("disk-msg", t("diskMounted", { p: m.path }));
   else if (state.settings.mount && !state.unlocked) msg("disk-msg", t("diskLocked"));
   else msg("disk-msg", state.settings.mount ? "" : t("diskOff"));
+}
+
+// Deletions the Explorer folder holds (more than 50 at once): the list
+// and one button that allows exactly that set. Rebuilt only when the set
+// changes, so an open list stays open.
+var heldKey = "";
+function renderHeld() {
+  var h = (state.mount || {}).held || null, box = $("disk-held");
+  var key = h ? (h.goneSig || "") + "/" + (h.lostSig || "") + "/" + lang : "";
+  if (key === heldKey) return;
+  heldKey = key;
+  box.textContent = "";
+  if (!h) return;
+  [["gone", h.gone, h.goneCount, h.goneSig], ["lost", h.lost, h.lostCount, h.lostSig]].forEach(function (k) {
+    if (!k[3]) return;
+    var kind = k[0], list = k[1] || [], n = k[2] || list.length;
+    var p = el("p", "note bad", t(kind === "gone" ? "heldGone" : "heldLost", { n: n }));
+    var d = el("details", "held"), ul = el("ul", "events");
+    d.appendChild(el("summary", "", t("heldList")));
+    list.forEach(function (f) { ul.appendChild(el("li", "", f)); });
+    if (n > list.length) ul.appendChild(el("li", "", t("heldMore", { n: n - list.length })));
+    d.appendChild(ul);
+    var b = el("button", "btn danger", t(kind === "gone" ? "heldGoneOk" : "heldLostOk"));
+    b.type = "button";
+    b.onclick = function () {
+      if (!confirm(t("heldAsk", { n: n }))) return;
+      b.disabled = true;
+      api("mount/approve", { kind: kind, sig: k[3] }).then(function () { heldKey = null; refresh(); })
+        .catch(function (e) { b.disabled = false; msg("disk-msg", e.message, true); heldKey = null; refresh(); });
+    };
+    box.appendChild(p); box.appendChild(d); box.appendChild(el("div", "row wrap")).appendChild(b);
+  });
+}
+
+// What a running pass is doing (the tray says the same, app SyncText).
+function syncText(p) {
+  if (!p || !p.files) return t("stChecking");
+  var sz = function (n) { var v = size(n); return lang === "el" ? v.replace(".", ",") : v; };
+  return t("stUploading", { d: p.filesDone, n: p.files, bd: sz(p.bytesDone), b: sz(p.bytes) });
 }
 
 function size(n) {

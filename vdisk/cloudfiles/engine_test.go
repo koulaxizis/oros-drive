@@ -694,3 +694,68 @@ func TestAPassDuringADeleteOrMoveBringsNothingBack(t *testing.T) {
 		t.Fatal("a new file under a deleted name was not uploaded")
 	}
 }
+
+// Held deletions (Chris 2026-11-27: 748 held, logged every 5 s, with no
+// way to see or answer them): shown with their paths, logged once per
+// set, carried out only when exactly the shown set is approved.
+func TestHeldDeletionsAreShownLoggedOnceAndApprovedBySet(t *testing.T) {
+	en := newEnv(t)
+	en.e.MaxDeletes = 2
+	var mu sync.Mutex
+	var held []string
+	en.e.Logf = func(kind, rel, detail string) {
+		if kind == "held" {
+			mu.Lock()
+			held = append(held, detail)
+			mu.Unlock()
+		}
+	}
+	en.browser(map[string]string{"a": "a", "b": "b", "c": "c", "d": "d"})
+	en.pass()
+	en.browser(nil, "a", "b", "c")
+	for i := 0; i < 4; i++ {
+		if rep := en.pass(); rep.Held != 3 {
+			t.Fatal(rep.Held)
+		}
+	}
+	time.Sleep(50 * time.Millisecond) // Logf runs in its own goroutine
+	mu.Lock()
+	if len(held) != 1 || held[0] != "3 files deleted in orOS" {
+		t.Fatalf("logged %q, want once", held)
+	}
+	mu.Unlock()
+	h := en.e.Held()
+	if strings.Join(h.Gone, " ") != "a b c" || h.GoneSig == "" || len(h.Lost) != 0 {
+		t.Fatalf("%+v", h)
+	}
+	if en.e.ApproveHeld("gone", "nope") || en.e.ApproveHeld("lost", h.GoneSig) {
+		t.Fatal("only the set shown can be approved")
+	}
+	// the set changes before the approval arrives: the old one lapses
+	en.browser(nil, "d")
+	if !en.e.ApproveHeld("gone", h.GoneSig) {
+		t.Fatal("the set shown was waiting")
+	}
+	if rep := en.pass(); rep.Held != 4 {
+		t.Fatal("a changed set waits again", rep.Held)
+	}
+	if got := en.f.names(); got != "a b c d" {
+		t.Fatal(got)
+	}
+	h = en.e.Held()
+	if strings.Join(h.Gone, " ") != "a b c d" {
+		t.Fatalf("%+v", h)
+	}
+	if !en.e.ApproveHeld("gone", h.GoneSig) {
+		t.Fatal(h)
+	}
+	if rep := en.pass(); rep.Held != 0 {
+		t.Fatal(rep.Held)
+	}
+	if got := en.f.names(); got != "" {
+		t.Fatal("approved deletions are carried out:", got)
+	}
+	if h := en.e.Held(); len(h.Gone) != 0 || h.GoneSig != "" {
+		t.Fatalf("%+v", h)
+	}
+}

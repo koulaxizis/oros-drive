@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/koulaxizis/oros-drive/mirror"
 )
 
 // fakeOros is an "orOS program" file for ManagedBy; on Linux the login
@@ -170,5 +172,20 @@ func TestSummaryNeedsCookie(t *testing.T) {
 	var sum Summary
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &sum) != nil || sum.V != 1 || sum.State != "warn" {
 		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+// orOS's tray says "Uploading X of Y" from the summary: progress only
+// while syncing, and the held deletions as one count.
+func TestSummaryProgressAndHeld(t *testing.T) {
+	p := &mirror.Progress{Files: 10, FilesDone: 4, Bytes: 100, BytesDone: 40}
+	st := Status{Syncing: true, Progress: p, Mount: MountInfo{Held: &mountHeld{GoneCount: 748, LostCount: 2}}}
+	sum := SummaryOf(st)
+	if sum.Progress != p || sum.Held != 750 {
+		t.Fatalf("summary %+v", sum)
+	}
+	st.Syncing = false
+	if SummaryOf(st).Progress != nil {
+		t.Fatal("progress after the pass")
 	}
 }

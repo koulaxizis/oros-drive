@@ -826,6 +826,18 @@ func (s *Server) Status() (Report, error) {
 	return s.last, s.lastErr
 }
 
+// Held is the deletions waiting for the person (Engine.Held).
+func (s *Server) Held() Held { return s.e.Held() }
+
+// ApproveHeld lets the next pass, run now, carry out exactly that set.
+func (s *Server) ApproveHeld(kind, sig string) bool {
+	if !s.e.ApproveHeld(kind, sig) {
+		return false
+	}
+	s.poke()
+	return true
+}
+
 func (s *Server) poke() {
 	select {
 	case s.kick <- struct{}{}:

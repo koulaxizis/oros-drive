@@ -30,12 +30,15 @@ const OrosURL = "https://useoros.online/"
 
 // Status is what the settings page and the tray show.
 type Status struct {
-	SignedIn  bool                  `json:"signedIn"`
-	Provider  string                `json:"provider,omitempty"` // "dropbox" or "webdav"
-	Account   string                `json:"account,omitempty"`
-	Unlocked  bool                  `json:"unlocked"`
-	NeedsKey  string                `json:"needsKey,omitempty"` // "locked", "empty" (no vault yet), "reset"
-	Syncing   bool                  `json:"syncing"`
+	SignedIn bool   `json:"signedIn"`
+	Provider string `json:"provider,omitempty"` // "dropbox" or "webdav"
+	Account  string `json:"account,omitempty"`
+	Unlocked bool   `json:"unlocked"`
+	NeedsKey string `json:"needsKey,omitempty"` // "locked", "empty" (no vault yet), "reset"
+	Syncing  bool   `json:"syncing"`
+	// Progress: how far this pass's uploads are, while syncing; none
+	// while the folders are still being checked.
+	Progress  *mirror.Progress      `json:"progress,omitempty"`
 	Paused    bool                  `json:"paused"`
 	Error     string                `json:"error,omitempty"`
 	LastSync  time.Time             `json:"lastSync,omitempty"`
@@ -85,6 +88,8 @@ type Service struct {
 	lastErr  string
 	needsKey string
 	syncing  bool
+	progress *mirror.Progress // this pass's uploads (nil: checking)
+	told     time.Time        // last progress notify
 	login    string
 	uiPort   int      // the settings page's port, for a sign-in orOS hands over
 	handoff  *handoff // a Dropbox sign-in whose answer orOS passes on
@@ -183,6 +188,21 @@ func (s *Service) notify() {
 	}
 }
 
+// setProgress keeps the pass's upload progress; the tray and the page
+// hear of it at most once a second, and always of the last file.
+func (s *Service) setProgress(p mirror.Progress) {
+	s.mu.Lock()
+	s.progress = &p
+	tell := p.FilesDone == p.Files || time.Since(s.told) >= time.Second
+	if tell {
+		s.told = time.Now()
+	}
+	s.mu.Unlock()
+	if tell {
+		s.notify()
+	}
+}
+
 // Kick asks for a pass as soon as possible.
 func (s *Service) Kick() {
 	select {
@@ -205,12 +225,12 @@ func (s *Service) Status() Status {
 	defer s.mu.Unlock()
 	st := Status{
 		SignedIn: s.store() != nil, Provider: s.provider(), Account: s.account, Unlocked: s.vkey != nil,
-		NeedsKey: s.needsKey, Syncing: s.syncing, Paused: s.settings.Paused,
+		NeedsKey: s.needsKey, Syncing: s.syncing, Progress: s.progress, Paused: s.settings.Paused,
 		Error: s.lastErr, LastSync: s.lastSync, Last: s.last,
 		Events: append([]mirror.Event{}, s.events...), Settings: *s.settings,
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
-		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount()},
+		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount(), Held: heldOf(s.mnt.srv)},
 		Update:  s.update, Signal: s.signal, Managed: managedActive(s.settings.ManagedBy),
 		MaxFileDefault: DefaultMaxFileMB(),
 	}
@@ -813,6 +833,7 @@ func (s *Service) engineLocked() (*mirror.Engine, error) {
 			MaxDeletes:  s.settings.MaxDeletes,
 		},
 		Log:       s.addEvent,
+		Progress:  s.setProgress,
 		Folder:    s.Folders,
 		CanCreate: func() error { return s.keyFileMatches(st, vk) },
 	}
@@ -843,7 +864,7 @@ func (s *Service) SyncOnce() (busy bool, err error) {
 		return false, err
 	}
 	st, vk := s.store(), s.vkey
-	s.syncing = true
+	s.syncing, s.progress = true, nil
 	s.mu.Unlock()
 	s.notify()
 
@@ -869,7 +890,7 @@ func (s *Service) SyncOnce() (busy bool, err error) {
 	res, err := e.Sync(pairs, approve)
 
 	s.mu.Lock()
-	s.syncing = false
+	s.syncing, s.progress = false, nil
 	if res != nil {
 		s.last = res
 		for id, f := range res.Folders {

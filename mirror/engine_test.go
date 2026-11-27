@@ -687,3 +687,29 @@ func TestCloudChangeNeverDeletes(t *testing.T) {
 		t.Fatal("noticed twice")
 	}
 }
+
+// The app shows "uploading X of Y" from Progress: totals first, then one
+// call per file, ending at the totals; an idle pass says nothing.
+func TestProgressCountsUploads(t *testing.T) {
+	e := newEnv(t)
+	a := e.device("a")
+	la := a.folder("docs", R)
+	write(t, la, "one.txt", "12345")
+	write(t, la, "two.txt", "123")
+	var got []Progress
+	a.Progress = func(p Progress) { got = append(got, p) }
+	if r := a.sync(); r.Uploaded != 2 {
+		t.Fatalf("uploaded %d", r.Uploaded)
+	}
+	if len(got) != 3 {
+		t.Fatalf("calls %+v", got)
+	}
+	if got[0] != (Progress{Files: 2, Bytes: 8}) || got[2] != (Progress{Files: 2, FilesDone: 2, Bytes: 8, BytesDone: 8}) {
+		t.Fatalf("progress %+v", got)
+	}
+	got = nil
+	a.sync()
+	if len(got) != 0 {
+		t.Fatalf("idle pass %+v", got)
+	}
+}
