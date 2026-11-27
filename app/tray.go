@@ -108,7 +108,7 @@ func (t *Tray) refresh() {
 	case "paused":
 		text = t.word("Paused", "Σε παύση")
 	case "sync":
-		text = t.word("Syncing…", "Συγχρονίζει…")
+		text = SyncText(st.Progress, t.greek())
 	case "bad":
 		text = t.word("Needs attention", "Θέλει προσοχή")
 	}

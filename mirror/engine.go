@@ -128,8 +128,20 @@ type Engine struct {
 	// key file in the cloud, so a reset vault is never rebuilt with an
 	// old key behind orOS's back.
 	CanCreate func() error
+	// Progress, when set, hears how far a pass's uploads are: once
+	// when they start and after each file. Called with no lock held.
+	Progress func(Progress)
 
 	mu sync.Mutex
+}
+
+// Progress is how far a pass's uploads are. Before the first call of a
+// pass the folders are still being checked.
+type Progress struct {
+	Files     int   `json:"files"`     // files to send up in this pass
+	FilesDone int   `json:"filesDone"` // of them handled (sent, failed or left for the next pass)
+	Bytes     int64 `json:"bytes"`
+	BytesDone int64 `json:"bytesDone"`
 }
 
 var ErrTooManyConflicts = errors.New("the vault kept changing during the sync; will try again")
@@ -555,6 +567,23 @@ func mimeOf(rel string) string {
 // commit uploads and removes in batches, one conditional manifest
 // write per batch. State is updated only for batches the cloud took.
 func (e *Engine) commit(remote *vault.Remote, todo []*work, opt Options, res *Result) error {
+	var pr Progress
+	for _, w := range todo {
+		if !w.delete {
+			pr.Files++
+			pr.Bytes += w.size
+		}
+	}
+	tell := func(w *work) {
+		if w != nil {
+			pr.FilesDone++
+			pr.BytesDone += w.size
+		}
+		if e.Progress != nil && pr.Files > 0 {
+			e.Progress(pr)
+		}
+	}
+	tell(nil)
 	for len(todo) > 0 {
 		var batch []*work
 		var bytes int64
@@ -574,10 +603,12 @@ func (e *Engine) commit(remote *vault.Remote, todo []*work, opt Options, res *Re
 			if err != nil {
 				res.Failed++
 				e.log("error", w.pair.Name(), w.rel, err.Error())
+				tell(w)
 				continue
 			}
 			if vault.SHA256Hex(data) != w.hash {
 				res.Busy = true // changed since the scan: next pass
+				tell(w)
 				continue
 			}
 			ent, err := e.Vault.Upload(remote, data, mimeOf(w.rel))
@@ -586,6 +617,7 @@ func (e *Engine) commit(remote *vault.Remote, todo []*work, opt Options, res *Re
 			}
 			remote.Files[full] = ent
 			done = append(done, w)
+			tell(w)
 		}
 		if len(done) == 0 {
 			continue

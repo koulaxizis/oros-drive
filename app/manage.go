@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"github.com/koulaxizis/oros-drive/mirror"
 )
 
 // One orOS icon (bundle plan, oros-portable "orOS tray"): installed
@@ -115,6 +117,12 @@ type Summary struct {
 	Folders  int    `json:"folders"`
 	Managed  bool   `json:"managed"`
 	Update   string `json:"update,omitempty"` // a newer release's version
+	// Progress: this pass's uploads, while syncing ("Uploading 120 of
+	// 22,600"); absent while the folders are being checked.
+	Progress *mirror.Progress `json:"progress,omitempty"`
+	// Held: deletions the Explorer folder waits to be allowed on the
+	// settings page (more than the limit at once).
+	Held int `json:"held,omitempty"`
 }
 
 // SummaryOf condenses a status for orOS's tray.
@@ -123,6 +131,12 @@ func SummaryOf(st Status) Summary {
 		Paused: st.Paused, Syncing: st.Syncing, Folders: len(st.Settings.Folders), Managed: st.Managed}
 	if st.Update != nil {
 		sum.Update = st.Update.Version
+	}
+	if st.Syncing {
+		sum.Progress = st.Progress
+	}
+	if h := st.Mount.Held; h != nil {
+		sum.Held = h.GoneCount + h.LostCount
 	}
 	return sum
 }

@@ -30,7 +30,7 @@ type Settings struct {
 	Device      string        `json:"device"` // folder name of this computer under /Drive
 	Folders     []mirror.Pair `json:"folders"`
 	Paused      bool          `json:"paused,omitempty"`
-	MaxFileMB   int           `json:"maxFileMB,omitempty"`  // 0 = 500
+	MaxFileMB   int           `json:"maxFileMB,omitempty"`  // 0 = app.DefaultMaxFileMB (4096; Android 500)
 	MaxDeletes  int           `json:"maxDeletes,omitempty"` // 0 = 50
 	Lang        string        `json:"lang,omitempty"`       // "en", "el" or "" (from the system)
 	NoAutostart bool          `json:"noAutostart,omitempty"`

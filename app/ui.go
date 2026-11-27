@@ -277,6 +277,18 @@ func (u *UI) Handler() http.Handler {
 		}
 		return nil, u.S.SetPaused(in.Paused)
 	})
+	// The Explorer folder's held deletions: the person allows exactly the
+	// set the page showed (kind gone|lost, sig from /api/status).
+	api("/api/mount/approve", "POST", func(r *http.Request) (any, error) {
+		var in struct{ Kind, Sig string }
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			return nil, err
+		}
+		if !u.S.ApproveMountDeletes(in.Kind, in.Sig) {
+			return nil, errors.New("the list changed meanwhile; look at it again")
+		}
+		return nil, nil
+	})
 	api("/api/folders/add", "POST", func(r *http.Request) (any, error) {
 		var in struct{ Path, Name string }
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
