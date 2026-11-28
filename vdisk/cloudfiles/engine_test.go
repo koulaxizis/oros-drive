@@ -31,6 +31,7 @@ type fake struct {
 	gone    bool // the folder itself is missing
 	busy    map[string]bool
 	trashed []string
+	fetches int
 }
 
 type ffile struct {
@@ -39,6 +40,7 @@ type ffile struct {
 	id              string
 	size            int64
 	mtime           time.Time
+	pin             int8
 }
 
 func (f *fake) Scan() (map[string]Entry, error) {
@@ -49,7 +51,8 @@ func (f *fake) Scan() (map[string]Entry, error) {
 	}
 	out := map[string]Entry{}
 	for rel, x := range f.files {
-		out[rel] = Entry{Dir: x.dir, Placeholder: x.ph, InSync: x.inSync, Size: x.size, MTime: x.mtime}
+		out[rel] = Entry{Dir: x.dir, Placeholder: x.ph, InSync: x.inSync, Size: x.size, MTime: x.mtime,
+			Online: x.ph && !x.dir && x.data == nil, Pin: x.pin}
 	}
 	return out, nil
 }
@@ -130,6 +133,43 @@ func (f *fake) hydrate(x *ffile) error {
 	}
 	x.data = b
 	return nil
+}
+
+func (f *fake) Hydrate(rel string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	x, ok := f.files[rel]
+	if !ok {
+		return os.ErrNotExist
+	}
+	if f.busy[rel] {
+		return ErrBusy
+	}
+	f.fetches++
+	return f.hydrate(x)
+}
+
+func (f *fake) Dehydrate(rel string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	x, ok := f.files[rel]
+	if !ok {
+		return os.ErrNotExist
+	}
+	if !x.ph || !x.inSync {
+		return ErrChanged
+	}
+	if f.busy[rel] {
+		return ErrBusy
+	}
+	x.data = nil
+	return nil
+}
+
+func (f *fake) setPin(rel string, pin int8) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files[rel].pin = pin
 }
 
 func (f *fake) Snapshot(rel, tmp string) error {
@@ -757,5 +797,111 @@ func TestHeldDeletionsAreShownLoggedOnceAndApprovedBySet(t *testing.T) {
 	}
 	if h := en.e.Held(); len(h.Gone) != 0 || h.GoneSig != "" {
 		t.Fatalf("%+v", h)
+	}
+}
+
+// KEEP-1: a full copy here, a batch per pass, never filling the disk;
+// the computer's own Drive folder stays on demand.
+func TestKeepDownloadsEverythingButSkipped(t *testing.T) {
+	en := newEnv(t)
+	en.browser(map[string]string{"Docs/a.txt": "alpha", "Docs/b.txt": "beta", "c.md": "c",
+		"Drive/pc/Documents/x.txt": "mirrored", "Drive/phone/y.txt": "other device"})
+	rep := en.pass()
+	if rep.Keep.On || rep.Keep.Waiting != 0 || en.f.hydrated("c.md") {
+		t.Fatal("downloaded with the full copy off", rep.Keep)
+	}
+	en.e.SetKeep(true, "Drive/pc")
+	en.pass()
+	for _, rel := range []string{"Docs/a.txt", "Docs/b.txt", "c.md", "Drive/phone/y.txt"} {
+		if !en.f.hydrated(rel) {
+			t.Fatal("not downloaded:", rel)
+		}
+	}
+	if en.f.hydrated("Drive/pc/Documents/x.txt") {
+		t.Fatal("the computer's own Drive folder was downloaded")
+	}
+	rep = en.pass()
+	if rep.Keep.Waiting != 0 || rep.Keep.Fetched != 0 {
+		t.Fatal(rep.Keep)
+	}
+	// A change in orOS replaces the content, then it is downloaded again.
+	en.browser(map[string]string{"c.md": "c2"})
+	en.pass()
+	en.pass()
+	if !en.f.hydrated("c.md") || en.f.read(t, "c.md") != "c2" {
+		t.Fatal("the new version was not kept")
+	}
+	// Turned off: what is here stays, nothing more is downloaded.
+	en.e.SetKeep(false)
+	en.browser(map[string]string{"d.md": "d"})
+	en.pass()
+	if en.f.hydrated("d.md") || !en.f.hydrated("Docs/a.txt") {
+		t.Fatal("off changed what is here")
+	}
+}
+
+func TestKeepBatchesAndStopsBeforeTheDiskIsFull(t *testing.T) {
+	en := newEnv(t)
+	en.browser(map[string]string{"a": "1111", "b": "2222", "c": "3333"})
+	en.e.KeepBatch = 5 // bytes: two files of 4 do not fit, one always goes
+	en.e.SetKeep(true)
+	en.pass() // makes the placeholders
+	rep := en.pass()
+	if rep.Keep.Fetched != 1 || rep.Keep.Waiting != 2 || rep.Keep.Bytes != 8 {
+		t.Fatal("one batch per pass", rep.Keep)
+	}
+	free := int64(10)
+	en.e.FreeSpace = func() (int64, error) { return free, nil }
+	en.e.KeepFree = 8 // 10 - 4 < 8: no room
+	rep = en.pass()
+	if !rep.Keep.NoSpace || rep.Keep.Fetched != 0 {
+		t.Fatal("downloaded into a full disk", rep.Keep)
+	}
+	free = 100
+	for i := 0; i < 3; i++ {
+		en.pass()
+	}
+	if countHydrated(en, "a", "b", "c") != 3 {
+		t.Fatal("not all downloaded")
+	}
+}
+
+func countHydrated(en *env, rels ...string) int {
+	n := 0
+	for _, r := range rels {
+		if en.f.hydrated(r) {
+			n++
+		}
+	}
+	return n
+}
+
+func TestExplorerPinsAreKept(t *testing.T) {
+	en := newEnv(t)
+	en.browser(map[string]string{"Keep/a.txt": "a", "Keep/sub/b.txt": "b", "Other/c.txt": "c"})
+	en.pass()
+	en.f.setPin("Keep", 1) // "Always keep on this device", full copy off
+	en.pass()
+	if !en.f.hydrated("Keep/a.txt") || !en.f.hydrated("Keep/sub/b.txt") || en.f.hydrated("Other/c.txt") {
+		t.Fatal("the pin was not followed")
+	}
+	// "Free up space" on a file under the pin, and with the full copy on.
+	en.e.SetKeep(true)
+	en.f.setPin("Keep/sub/b.txt", -1)
+	en.pass()
+	if en.f.hydrated("Keep/sub/b.txt") || !en.f.hydrated("Other/c.txt") {
+		t.Fatal("free up space was not followed")
+	}
+	// A file changed here is never dropped, even when freed.
+	en.f.setPin("Other", -1)
+	en.f.mu.Lock()
+	x := en.f.files["Other/c.txt"]
+	x.inSync, x.data = false, []byte("changed here")
+	en.f.mu.Unlock()
+	en.f.busy["Other/c.txt"] = false
+	en.e.Settle = time.Hour // still being written: not uploaded in this pass
+	en.pass()
+	if !en.f.hydrated("Other/c.txt") {
+		t.Fatal("a changed file lost its content")
 	}
 }

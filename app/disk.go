@@ -20,6 +20,23 @@ type MountInfo struct {
 	Error     string `json:"error,omitempty"`
 	// Held: deletions waiting for the person (more than 50 at once).
 	Held *mountHeld `json:"held,omitempty"`
+	// Keep: the full copy's progress, on systems that have it (the
+	// Windows Explorer folder, KEEP-1).
+	Keep *cloudfiles.KeepReport `json:"keep,omitempty"`
+}
+
+// keepMount is a mounted disk that can keep a full copy (cloudfiles).
+type keepMount interface {
+	Status() (cloudfiles.Report, error)
+}
+
+func keepOf(srv unmounter) *cloudfiles.KeepReport {
+	km, ok := srv.(keepMount)
+	if !ok {
+		return nil
+	}
+	rep, _ := km.Status()
+	return &rep.Keep
 }
 
 // unmounter is a mounted disk (a FUSE server on Linux).

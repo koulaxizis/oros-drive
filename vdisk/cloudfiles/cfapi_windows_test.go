@@ -210,3 +210,73 @@ func TestExplorerFolder(t *testing.T) {
 		t.Fatal("a file never downloaded was left behind", err)
 	}
 }
+
+// KEEP-1 against the real driver: the full copy downloads in the pass,
+// the own Drive folder stays on demand, "Free up space" drops content.
+func TestExplorerFolderKeep(t *testing.T) {
+	en := newEnv(t)
+	en.browser(map[string]string{"Docs/a.txt": "alpha", "Docs/b.txt": "beta", "Drive/pc/x.txt": "mirrored"})
+	d := &vdisk.Disk{Vault: vault.New(en.store, nil).WithKeys(keys), CacheDir: filepath.Join(en.root, "cache"), TTL: time.Nanosecond}
+	dir := filepath.Join(en.root, "orOS")
+	srv, err := Mount(d, dir, Options{
+		StatePath: filepath.Join(en.root, "cf.json"),
+		Interval:  time.Hour,
+		Settle:    time.Millisecond,
+		KeepSkip:  []string{"Drive/pc"},
+	})
+	if err != nil {
+		t.Skipf("no Cloud Files here: %v", err)
+	}
+	defer func() {
+		srv.Unmount()
+		Unregister(dir, "")
+	}()
+	sync := func() Report {
+		t.Helper()
+		time.Sleep(20 * time.Millisecond)
+		if err := d.Refresh(true); err != nil {
+			t.Fatal(err)
+		}
+		rep, err := srv.Sync()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rep.Errors) > 0 {
+			t.Fatal(rep.Errors)
+		}
+		return rep
+	}
+	sync()
+	a := filepath.Join(dir, "Docs", "a.txt")
+	if !dehydrated(t, a) {
+		t.Fatal("downloaded with the full copy off")
+	}
+	// The engine's own SetKeep: Server.SetKeep also kicks a background
+	// pass, which would do the work before this one.
+	srv.e.SetKeep(true, "Drive/pc")
+	rep := sync()
+	if rep.Keep.Fetched != 2 || rep.Keep.Waiting != 0 {
+		t.Fatalf("%+v", rep.Keep)
+	}
+	if dehydrated(t, a) || dehydrated(t, filepath.Join(dir, "Docs", "b.txt")) {
+		t.Fatal("not downloaded")
+	}
+	if !dehydrated(t, filepath.Join(dir, "Drive", "pc", "x.txt")) {
+		t.Fatal("the own Drive folder was downloaded")
+	}
+	// Explorer's "Free up space" on the file.
+	attrs, err := windows.GetFileAttributes(utf16(long(a)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetFileAttributes(utf16(long(a)), (attrs|attrUnpinned)&^attrPinned); err != nil {
+		t.Fatal(err)
+	}
+	sync()
+	if !dehydrated(t, a) {
+		t.Fatal("free up space was not followed")
+	}
+	if b, err := os.ReadFile(a); err != nil || string(b) != "alpha" {
+		t.Fatalf("%q %v", b, err) // still opens from orOS
+	}
+}

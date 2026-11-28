@@ -37,6 +37,10 @@ type Settings struct {
 	// NoUpdateCheck: never ask GitHub for a newer release (UPD-1).
 	NoUpdateCheck bool   `json:"noUpdateCheck,omitempty"`
 	Mount         string `json:"mount,omitempty"` // folder showing the whole orOS disk (Linux); "" = off
+	// MountKeep: the Explorer folder keeps a full copy of every orOS
+	// file on this computer, except this computer's own Drive folder
+	// (KEEP-1). Off: files download when opened.
+	MountKeep bool `json:"mountKeep,omitempty"`
 	// NoTray: no icon in the system tray; starting the app again opens
 	// the settings page (fewer icons next to orOS's own).
 	NoTray bool `json:"noTray,omitempty"`

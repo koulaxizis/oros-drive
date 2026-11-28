@@ -38,7 +38,13 @@ func (s *Service) syncMount() {
 	if s.vkey == nil || s.store() == nil || s.signal != "" { // SOS-1: no disk while the cloud holds a signal
 		want = ""
 	}
+	// The computer's own Drive folder is here already (its mirrored
+	// folders): it stays on demand in the full copy.
+	keepSkip := []string{"Drive/" + s.settings.Device}
 	if s.mnt.srv != nil && s.mnt.path == want && s.diskKey == s.vkey {
+		if srv, ok := s.mnt.srv.(*cloudfiles.Server); ok {
+			srv.SetKeep(s.settings.MountKeep, keepSkip...)
+		}
 		return
 	}
 	if s.mnt.srv != nil {
@@ -63,6 +69,8 @@ func (s *Service) syncMount() {
 	srv, err := cloudfiles.Mount(d, want, cloudfiles.Options{
 		StatePath: cfState(want),
 		TrashDir:  trash,
+		Keep:      s.settings.MountKeep,
+		KeepSkip:  keepSkip,
 		Logf: func(kind, rel, detail string) {
 			// Never wait for s.mu here: a pass can run while it is held.
 			go s.addEvent(mirror.Event{Time: time.Now(), Kind: kind, Folder: "orOS", Path: rel, Detail: detail})
