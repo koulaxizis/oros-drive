@@ -251,7 +251,9 @@ func TestExplorerFolderKeep(t *testing.T) {
 	if !dehydrated(t, a) {
 		t.Fatal("downloaded with the full copy off")
 	}
-	srv.SetKeep(true, "Drive/pc")
+	// The engine's own SetKeep: Server.SetKeep also kicks a background
+	// pass, which would do the work before this one.
+	srv.e.SetKeep(true, "Drive/pc")
 	rep := sync()
 	if rep.Keep.Fetched != 2 || rep.Keep.Waiting != 0 {
 		t.Fatalf("%+v", rep.Keep)
