@@ -41,6 +41,10 @@ var T = {
     diskText: "The whole orOS disk appears as a folder on this computer. Files download when you open them and upload when you save them; a copy of what you opened stays in a cache.",
     diskOn: "Show the orOS disk", diskPath: "Folder (it must be empty)",
     diskMounted: "Shown at {p}.", diskOff: "Off.", diskLocked: "Shown again once the vault is unlocked.",
+    diskKeep: "Keep a copy of every file on this computer",
+    diskKeepNote: "Files download in the background and stay ready to open, also without internet. This computer's own Drive folder is left as it is (its files are here already), and at least 5 GB of the disk always stays free. What you change in the folder is uploaded to orOS as always. In Explorer, right-click › \u201cAlways keep on this device\u201d or \u201cFree up space\u201d works for single folders too.",
+    keepLeft: "Copy: {n} files ({s}) still to download.", keepDone: "Copy: every file is on this computer.",
+    keepNoSpace: "Copy paused: less than 5 GB would stay free on this disk.",
     heldGone: "{n} files were deleted in orOS. Here they are only shortcuts to the orOS copy, which is gone. So many at once wait for you: nothing is deleted until you say so.",
     heldLost: "{n} files are missing from this folder but are still in orOS. So many at once wait for you: nothing is deleted in orOS until you say so.",
     heldGoneOk: "Delete them here too", heldLostOk: "Delete them in orOS too",
@@ -124,6 +128,10 @@ var T = {
     diskText: "Όλος ο δίσκος του orOS εμφανίζεται ως φάκελος σε αυτόν τον υπολογιστή. Τα αρχεία κατεβαίνουν όταν τα ανοίγεις και ανεβαίνουν όταν τα αποθηκεύεις· ένα αντίγραφο όσων άνοιξες μένει στην cache.",
     diskOn: "Εμφάνιση του δίσκου του orOS", diskPath: "Φάκελος (πρέπει να είναι άδειος)",
     diskMounted: "Εμφανίζεται στο {p}.", diskOff: "Ανενεργό.", diskLocked: "Θα εμφανιστεί ξανά μόλις ξεκλειδωθεί το vault.",
+    diskKeep: "Κράτα αντίγραφο όλων των αρχείων σε αυτόν τον υπολογιστή",
+    diskKeepNote: "Τα αρχεία κατεβαίνουν στο παρασκήνιο και είναι πάντα έτοιμα να ανοίξουν, και χωρίς internet. Ο φάκελος Drive αυτού του υπολογιστή μένει όπως είναι (τα αρχεία του είναι ήδη εδώ) και μένουν πάντα τουλάχιστον 5 GB ελεύθερα στον δίσκο. Ό,τι αλλάζεις στον φάκελο ανεβαίνει στο orOS όπως πάντα. Στην Εξερεύνηση, δεξί κλικ › «Να διατηρείται πάντα σε αυτή τη συσκευή» ή «Αποδέσμευση χώρου» δουλεύει και για μεμονωμένους φακέλους.",
+    keepLeft: "Αντίγραφο: απομένουν {n} αρχεία ({s}) για κατέβασμα.", keepDone: "Αντίγραφο: όλα τα αρχεία είναι σε αυτόν τον υπολογιστή.",
+    keepNoSpace: "Το αντίγραφο σταμάτησε: θα έμεναν λιγότερα από 5 GB ελεύθερα στον δίσκο.",
     heldGone: "{n} αρχεία σβήστηκαν στο orOS. Εδώ είναι μόνο συντομεύσεις προς το αντίγραφο του orOS, που δεν υπάρχει πια. Τόσα μαζί περιμένουν εσένα: τίποτα δεν σβήνεται αν δεν το πεις.",
     heldLost: "{n} αρχεία λείπουν από αυτόν τον φάκελο αλλά υπάρχουν ακόμη στο orOS. Τόσα μαζί περιμένουν εσένα: τίποτα δεν σβήνεται στο orOS αν δεν το πεις.",
     heldGoneOk: "Σβήσ' τα και εδώ", heldLostOk: "Σβήσ' τα και στο orOS",
@@ -291,6 +299,13 @@ function renderDisk() {
   if (!editingDisk) {
     $("d-on").checked = !!state.settings.mount;
     $("d-path").value = state.settings.mount || m.default || "";
+    $("d-keep").checked = !!state.settings.mountKeep;
+  }
+  $("d-keep-box").hidden = !m.keep;
+  var k = m.keep, kp = $("disk-keep");
+  kp.hidden = !(m.mounted && k && k.on);
+  if (!kp.hidden) {
+    kp.textContent = k.noSpace ? t("keepNoSpace") : k.waiting ? t("keepLeft", { n: k.waiting, s: size(k.bytes) }) : t("keepDone");
   }
   $("btn-disk-open").hidden = !m.mounted;
   if (m.error) msg("disk-msg", m.error, true);
@@ -539,9 +554,12 @@ document.addEventListener("DOMContentLoaded", function () {
   var disk = $("form-disk");
   disk.addEventListener("focusin", function () { editingDisk = true; });
   $("d-on").addEventListener("change", function () { editingDisk = true; });
+  $("d-keep").addEventListener("change", function () { editingDisk = true; });
   disk.onsubmit = function (ev) {
     ev.preventDefault();
-    api("prefs", { mount: $("d-on").checked ? $("d-path").value : "" }).then(function () { editingDisk = false; refresh(); })
+    var body = { mount: $("d-on").checked ? $("d-path").value : "" };
+    if (!$("d-keep-box").hidden) body.mountKeep = $("d-keep").checked;
+    api("prefs", body).then(function () { editingDisk = false; refresh(); })
       .catch(function (e) { msg("disk-msg", e.message, true); });
   };
   $("btn-space").onclick = showUsage;

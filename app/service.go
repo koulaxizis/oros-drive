@@ -230,7 +230,7 @@ func (s *Service) Status() Status {
 		Events: append([]mirror.Event{}, s.events...), Settings: *s.settings,
 		SecretsIn: secret.Where(), Login: s.login, Version: s.Version,
 		Folders: map[string]FolderInfo{},
-		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount(), Held: heldOf(s.mnt.srv)},
+		Mount:   MountInfo{Supported: mountSupported, Path: s.mnt.path, Error: s.mnt.err, Mounted: s.mnt.srv != nil, Default: defaultMount(), Held: heldOf(s.mnt.srv), Keep: keepOf(s.mnt.srv)},
 		Update:  s.update, Signal: s.signal, Managed: managedActive(s.settings.ManagedBy),
 		MaxFileDefault: DefaultMaxFileMB(),
 	}
@@ -705,6 +705,8 @@ type Prefs struct {
 	Lang       *string `json:"lang,omitempty"`
 	Autostart  *bool   `json:"autostart,omitempty"`
 	Mount      *string `json:"mount,omitempty"` // "" = off
+	// MountKeep: a full copy in the Explorer folder (KEEP-1).
+	MountKeep *bool `json:"mountKeep,omitempty"`
 	// UpdateCheck turns the daily new-release check on or off (UPD-1).
 	UpdateCheck *bool `json:"updateCheck,omitempty"`
 	// Tray shows or hides the icon in the system tray.
@@ -761,6 +763,9 @@ func (s *Service) SetPrefs(p Prefs) error {
 			return err
 		}
 		s.settings.Mount = m
+	}
+	if p.MountKeep != nil {
+		s.settings.MountKeep = *p.MountKeep
 	}
 	if p.UpdateCheck != nil {
 		s.settings.NoUpdateCheck = !*p.UpdateCheck

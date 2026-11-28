@@ -52,6 +52,13 @@ type Entry struct {
 	InSync      bool // Windows says it is unchanged since then
 	Size        int64
 	MTime       time.Time
+	// Online: a placeholder whose content is not on this computer yet
+	// (Windows downloads it when a program reads it).
+	Online bool
+	// Pin is what the person chose in Explorer: 1 "Always keep on this
+	// device", -1 "Free up space", 0 neither (a folder's choice counts
+	// for what is in it).
+	Pin int8
 }
 
 // Local is the folder side. Paths are relative, with "/".
@@ -78,6 +85,11 @@ type Local interface {
 	// Remove deletes an in-sync file (to the trash when its content
 	// was downloaded) or an empty folder; ErrChanged when it changed.
 	Remove(rel string, dir bool) error
+	// Hydrate downloads an in-sync placeholder's content (KEEP-1).
+	Hydrate(rel string) error
+	// Dehydrate drops the downloaded content of an in-sync placeholder
+	// (it stays in orOS); ErrChanged when it is not in sync.
+	Dehydrate(rel string) error
 }
 
 // State values for folders: made here ("/") or seen in orOS ("/r").
@@ -98,13 +110,24 @@ type Engine struct {
 	Now        func() time.Time
 	Logf       func(kind, rel, detail string)
 
-	mu      sync.Mutex
-	loaded  bool
-	dirty   bool
-	state   map[string]string    // rel → content hash, or dirLocal / dirRemote
-	missing map[string]time.Time // synced, gone here, no delete callback yet
-	leaving map[string]time.Time // told orOS of its deletion or move; Windows has not finished it
-	tooBig  map[string]string    // rel → size/mtime that was refused
+	// A full copy here (KEEP-1): see SetKeep. KeepFree is the free
+	// space a download never goes below (0 = 5 GB), KeepBatch the bytes
+	// downloaded in one pass (0 = 512 MB; at least one file), FreeSpace
+	// the free space of the folder's disk (nil = not checked).
+	KeepFree  int64
+	KeepBatch int64
+	FreeSpace func() (int64, error)
+
+	mu       sync.Mutex
+	keep     bool
+	keepSkip []string             // rel folders Keep leaves on demand
+	keepErr  map[string]time.Time // a download that failed waits a while
+	loaded   bool
+	dirty    bool
+	state    map[string]string    // rel → content hash, or dirLocal / dirRemote
+	missing  map[string]time.Time // synced, gone here, no delete callback yet
+	leaving  map[string]time.Time // told orOS of its deletion or move; Windows has not finished it
+	tooBig   map[string]string    // rel → size/mtime that was refused
 
 	// Held deletions (more than MaxDeletes at once): what the person
 	// sees, the set already logged (one "held" event per new set, not
@@ -208,6 +231,145 @@ type Report struct {
 	LocalOnly []string // files too big for the vault
 	Skipped   []string // names the folder cannot hold, or file/folder clashes
 	Errors    []string
+	Keep      KeepReport
+}
+
+// KeepReport is the full copy's progress (KEEP-1).
+type KeepReport struct {
+	On      bool  `json:"on"`
+	Waiting int   `json:"waiting"`           // files still to download
+	Bytes   int64 `json:"bytes"`             // their size
+	Fetched int   `json:"fetched,omitempty"` // downloaded in this pass
+	NoSpace bool  `json:"noSpace,omitempty"` // stopped: the disk is nearly full
+}
+
+// SetKeep turns the full copy on or off (true: something changed). skip names folders (relative,
+// "/") whose files stay on demand: the computer's own Drive/<device>
+// folder, whose files are already here as mirrored folders. Explorer's
+// "Always keep on this device" and "Free up space" count either way.
+func (e *Engine) SetKeep(on bool, skip ...string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	same := e.keep == on && len(e.keepSkip) == len(skip)
+	for i := 0; same && i < len(skip); i++ {
+		same = e.keepSkip[i] == skip[i]
+	}
+	e.keep = on
+	e.keepSkip = append([]string(nil), skip...)
+	return !same
+}
+
+// pinOf is the nearest choice made in Explorer for rel or a folder
+// above it.
+func pinOf(local map[string]Entry, rel string) int8 {
+	for p := rel; p != "." && p != ""; p = path.Dir(p) {
+		if l, ok := local[p]; ok && l.Pin != 0 {
+			return l.Pin
+		}
+	}
+	return 0
+}
+
+// keepPass downloads the in-sync placeholders a full copy (or a pin)
+// wants, a batch per pass, never below KeepFree of free space; and
+// drops the content of files the person freed in Explorer. Only
+// in-sync placeholders whose content is what both sides agreed on are
+// touched, so nothing changed here is lost.
+func (e *Engine) keepPass(local map[string]Entry, remote map[string]vdisk.Info, rep *Report) {
+	e.mu.Lock()
+	on, skip := e.keep, e.keepSkip
+	if e.keepErr == nil {
+		e.keepErr = map[string]time.Time{}
+	}
+	e.mu.Unlock()
+	state := e.snapshotState()
+	now := e.now()
+	rep.Keep.On = on
+	var want []string
+	for rel, l := range local {
+		if l.Dir || !l.Placeholder || !l.InSync {
+			continue
+		}
+		r, ok := remote[rel]
+		if !ok || r.Dir || state[rel] != r.Hash {
+			continue
+		}
+		pin := pinOf(local, rel)
+		if pin < 0 {
+			if !l.Online {
+				switch err := e.Local.Dehydrate(rel); {
+				case err == nil, errors.Is(err, ErrBusy), errors.Is(err, ErrChanged), errors.Is(err, os.ErrNotExist):
+				default:
+					e.logf("error", rel, err.Error())
+				}
+			}
+			continue
+		}
+		if !l.Online {
+			continue
+		}
+		if pin == 0 {
+			if !on {
+				continue
+			}
+			skipped := false
+			for _, k := range skip {
+				if rel == k || strings.HasPrefix(rel, k+"/") {
+					skipped = true
+					break
+				}
+			}
+			if skipped {
+				continue
+			}
+		}
+		want = append(want, rel)
+		rep.Keep.Waiting++
+		rep.Keep.Bytes += l.Size
+	}
+	sort.Strings(want)
+	batch := e.KeepBatch
+	if batch <= 0 {
+		batch = 512 << 20
+	}
+	minFree := e.KeepFree
+	if minFree <= 0 {
+		minFree = 5 << 30
+	}
+	var done int64
+	for _, rel := range want {
+		size := local[rel].Size
+		if rep.Keep.Fetched > 0 && done+size > batch {
+			break
+		}
+		e.mu.Lock()
+		failed, ok := e.keepErr[rel]
+		e.mu.Unlock()
+		if ok && now.Sub(failed) < 10*time.Minute {
+			continue
+		}
+		if e.FreeSpace != nil {
+			free, err := e.FreeSpace()
+			if err == nil && free-size < minFree {
+				rep.Keep.NoSpace = true
+				break
+			}
+		}
+		err := e.Local.Hydrate(rel)
+		switch {
+		case err == nil:
+			done += size
+			rep.Keep.Fetched++
+			rep.Keep.Waiting--
+			rep.Keep.Bytes -= size
+		case errors.Is(err, ErrBusy), errors.Is(err, os.ErrNotExist):
+		default:
+			e.mu.Lock()
+			e.keepErr[rel] = now
+			e.mu.Unlock()
+			e.logf("error", rel, "download: "+err.Error())
+		}
+	}
 }
 
 func (e *Engine) now() time.Time {
@@ -610,6 +772,7 @@ func (e *Engine) Pass() (Report, error) {
 		e.forget(rel)
 		e.logf("deleted-orOS", rel, "")
 	}
+	e.keepPass(local, remote, &rep)
 	if err := e.Save(); err != nil {
 		fail("", err)
 	}

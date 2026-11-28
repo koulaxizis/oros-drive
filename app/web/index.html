@@ -84,11 +84,16 @@
     <form id="form-disk" class="prefs">
       <label class="check"><input id="d-on" type="checkbox"><span data-t="diskOn"></span></label>
       <label><span data-t="diskPath"></span><input id="d-path"></label>
+      <div id="d-keep-box" hidden>
+        <label class="check"><input id="d-keep" type="checkbox"><span data-t="diskKeep"></span></label>
+        <p class="note" data-t="diskKeepNote"></p>
+      </div>
       <div class="row wrap">
         <button class="btn primary" data-t="save"></button>
         <button type="button" id="btn-disk-open" class="btn" data-t="open"></button>
       </div>
       <p id="disk-msg" class="note"></p>
+      <p id="disk-keep" class="note" hidden></p>
     </form>
     <div id="disk-held"></div>
   </section>

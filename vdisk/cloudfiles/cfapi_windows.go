@@ -50,6 +50,8 @@ var (
 	procInfo       = cldapi.NewProc("CfGetPlaceholderInfo")
 	procStateOf    = cldapi.NewProc("CfGetPlaceholderStateFromAttributeTag")
 	procRootInfo   = cldapi.NewProc("CfGetSyncRootInfoByPath")
+	procHydrate    = cldapi.NewProc("CfHydratePlaceholder")
+	procDehydrate  = cldapi.NewProc("CfDehydratePlaceholder")
 )
 
 // cfapi.h values used here.
@@ -87,6 +89,10 @@ const (
 	stateInSync      = 0x8
 	statePartial     = 0x10
 	stateInvalid     = 0xFFFFFFFF
+
+	// Explorer's "Always keep on this device" and "Free up space".
+	attrPinned   = 0x00080000
+	attrUnpinned = 0x00100000
 
 	renameSourceIn = 2
 	renameTargetIn = 4
@@ -329,7 +335,16 @@ func (w *winLocal) Scan() (map[string]Entry, error) {
 				if tag == 0 || ph { // symlinks and junctions are left alone
 					rel := prefix + name
 					isDir := fd.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0
+					var pin int8
+					switch {
+					case fd.FileAttributes&attrUnpinned != 0:
+						pin = -1
+					case fd.FileAttributes&attrPinned != 0:
+						pin = 1
+					}
 					out[rel] = Entry{
+						Online:      ph && !isDir && (st&statePartial != 0 || fd.FileAttributes&(windows.FILE_ATTRIBUTE_OFFLINE|windows.FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS) != 0),
+						Pin:         pin,
 						Dir:         isDir,
 						Placeholder: ph,
 						InSync:      ph && st&stateInSync != 0,
@@ -427,6 +442,52 @@ func (w *winLocal) Update(rel string, i vdisk.Info) error {
 	idb := []byte(i.Hash)
 	return hrErr(callProc(procUpdate, uintptr(h), uintptr(unsafe.Pointer(&meta)), uintptr(unsafe.Pointer(&idb[0])), uintptr(len(idb)),
 		0, 0, updateVerifyInSync|updateDehydrate|updateMarkInSync, 0, 0))
+}
+
+// Hydrate downloads the whole file the way a read would (Windows calls
+// onFetch). Offsets are 64-bit values: amd64 and arm64 pass them in
+// one register each (the only Windows builds).
+func (w *winLocal) Hydrate(rel string) error {
+	h, err := open(w.abs(rel), windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(h)
+	_, st, err := handleState(h)
+	if err != nil {
+		return err
+	}
+	if st == stateInvalid || st&stateInSync == 0 {
+		return ErrChanged
+	}
+	return hrErr(callProc(procHydrate, uintptr(h), 0, ^uintptr(0), 0, 0)) // length -1: to the end
+}
+
+// Dehydrate drops the content of an in-sync placeholder (exclusive
+// handle: a file open in a program is ErrBusy and stays).
+func (w *winLocal) Dehydrate(rel string) error {
+	h, err := open(w.abs(rel), windows.GENERIC_READ|windows.GENERIC_WRITE, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(h)
+	_, st, err := handleState(h)
+	if err != nil {
+		return err
+	}
+	if st == stateInvalid || st&stateInSync == 0 {
+		return ErrChanged
+	}
+	return hrErr(callProc(procDehydrate, uintptr(h), 0, ^uintptr(0), 0, 0))
+}
+
+// freeSpace is the free space of the folder's disk for this user.
+func (w *winLocal) freeSpace() (int64, error) {
+	var free, total, all uint64
+	if err := windows.GetDiskFreeSpaceEx(utf16(long(w.root)), &free, &total, &all); err != nil {
+		return 0, err
+	}
+	return int64(free), nil
 }
 
 func (w *winLocal) Snapshot(rel, tmp string) error {
@@ -664,6 +725,10 @@ type Options struct {
 	Interval  time.Duration // passes; 0 = 5 s
 	Settle    time.Duration // Engine.Settle
 	Logf      func(kind, rel, detail string)
+	// Keep: a full copy in the folder (Engine.SetKeep), except the
+	// KeepSkip folders.
+	Keep     bool
+	KeepSkip []string
 }
 
 // Server is a connected folder.
@@ -750,9 +815,10 @@ func Mount(d *vdisk.Disk, dir string, opt Options) (*Server, error) {
 	}
 	s := &Server{
 		Root: dir, w: w, norm: norm,
-		e:    &Engine{Disk: d, Local: w, StatePath: opt.StatePath, Settle: opt.Settle, Logf: opt.Logf},
+		e:    &Engine{Disk: d, Local: w, StatePath: opt.StatePath, Settle: opt.Settle, Logf: opt.Logf, FreeSpace: w.freeSpace},
 		kick: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
 	}
+	s.e.SetKeep(opt.Keep, opt.KeepSkip...)
 	serversMu.Lock()
 	nextID++
 	s.id = nextID
@@ -824,6 +890,18 @@ func (s *Server) Status() (Report, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.last, s.lastErr
+}
+
+// SetKeep changes the full copy (Engine.SetKeep); a change runs a
+// pass soon.
+func (s *Server) SetKeep(on bool, skip ...string) {
+	if !s.e.SetKeep(on, skip...) {
+		return
+	}
+	select {
+	case s.kick <- struct{}{}:
+	default:
+	}
 }
 
 // Held is the deletions waiting for the person (Engine.Held).
