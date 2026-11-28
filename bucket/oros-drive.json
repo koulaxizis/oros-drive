@@ -1,17 +1,17 @@
 {
-    "version": "0.6.0",
+    "version": "0.7.0",
     "description": "orOS Drive: mirrors folders of this computer into your end-to-end encrypted orOS Vault (your own Dropbox)",
     "homepage": "https://useoros.online/download/",
     "license": "MIT",
     "notes": "Start \"orOS Drive\" from the Start menu; the settings open in your browser. Settings and sign-in live in %APPDATA%\\orOS Drive, so they survive updates.",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/koulaxizis/oros-drive/releases/download/v0.6.0/orosdrive-0.6.0-windows-amd64.zip",
-            "hash": "69a7e9499fc432a5f67be2b97c0d598c6e493c1eb1f4f78cb6e861a30c6eed35"
+            "url": "https://github.com/koulaxizis/oros-drive/releases/download/v0.7.0/orosdrive-0.7.0-windows-amd64.zip",
+            "hash": "b2d41719b7e80e1d1f598867c7816760e33edc12bbf5ae440cd927012ab97cdf"
         },
         "arm64": {
-            "url": "https://github.com/koulaxizis/oros-drive/releases/download/v0.6.0/orosdrive-0.6.0-windows-arm64.zip",
-            "hash": "67e8a423081df42aa485e9f51ba9742e10c30af6eaeb37440145e87f601b412c"
+            "url": "https://github.com/koulaxizis/oros-drive/releases/download/v0.7.0/orosdrive-0.7.0-windows-arm64.zip",
+            "hash": "594ec85000fb7b6e98a39496856d6a2ee3aaf56e5e80fa47858aad59139a018c"
         }
     },
     "bin": "orosdrive.exe",
